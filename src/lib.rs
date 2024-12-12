@@ -1,15 +1,15 @@
-use std::{
-    path::Path,
-    fs,
-    sync::{Arc, Mutex},
-    collections::HashMap,
-};
-use rayon::prelude::*;
-use serde::{Serialize, Deserialize};
-use thiserror::Error;
-use log::{warn, error};
-use ignore::Walk;
 use chrono::{DateTime, Utc};
+use ignore::Walk;
+use log::{error, warn};
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    fs,
+    path::Path,
+    sync::{Arc, Mutex},
+};
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, DevFlowError>;
 
@@ -17,19 +17,19 @@ pub type Result<T> = std::result::Result<T, DevFlowError>;
 pub enum DevFlowError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     #[error("Config error: {0}")]
     Config(String),
-    
+
     #[error("Invalid path: {0}")]
     InvalidPath(String),
-    
+
     #[error("Analysis error: {0}")]
     Analysis(String),
-    
+
     #[error("Serialization error: {0}")]
     Serialization(String),
-    
+
     #[error("Thread error: {0}")]
     Thread(String),
 }
@@ -109,31 +109,33 @@ impl ProjectInsights {
 
 pub fn analyze_codebase(path: &Path, config: AppConfig) -> Result<ProjectInsights> {
     let insights = Arc::new(Mutex::new(ProjectInsights::new()));
-    
+
     let walker = Walk::new(path)
         .filter_map(|entry| entry.ok())
         .filter(|entry| {
-            let path = entry.path();
-            path.is_file() && !is_ignored(path, &config.ignored_patterns)
+            entry.file_type().map(|ft| ft.is_file()).unwrap_or(false)
+                && !is_ignored(entry.path(), &config.ignored_patterns)
         })
         .collect::<Vec<_>>();
 
-    walker.par_iter()
-        .try_for_each(|entry| -> Result<()> {
-            analyze_file(entry.path(), &insights, &config)
-        })?;
+    walker
+        .par_iter()
+        .try_for_each(|entry| -> Result<()> { analyze_file(entry.path(), &insights, &config) })?;
 
     let result = Arc::try_unwrap(insights)
         .map_err(|_| DevFlowError::Thread("Failed to unwrap Arc".into()))?
         .into_inner()
-        .map_err(|_| DevFlowError::Thread("Failed to unwrap Mutex".into()))?;
+        .map_err(|_| DevFlowError::Thread("Failed to acquire lock".into()))?;
 
     Ok(result)
 }
 
-fn analyze_file(path: &Path, insights: &Arc<Mutex<ProjectInsights>>, config: &AppConfig) -> Result<()> {
-    let content = fs::read_to_string(path)
-        .map_err(|e| DevFlowError::Io(e))?;
+fn analyze_file(
+    path: &Path,
+    insights: &Arc<Mutex<ProjectInsights>>,
+    config: &AppConfig,
+) -> Result<()> {
+    let content = fs::read_to_string(path).map_err(|e| DevFlowError::Io(e))?;
 
     if content.len() > config.max_file_size {
         warn!("File too large to analyze: {:?}", path);
@@ -143,17 +145,19 @@ fn analyze_file(path: &Path, insights: &Arc<Mutex<ProjectInsights>>, config: &Ap
     let metrics = calculate_metrics(path, &content, config)?;
     let file_path = path.to_string_lossy().into_owned();
 
-    let mut insights = insights.lock()
+    let mut insights = insights
+        .lock()
         .map_err(|_| DevFlowError::Thread("Failed to acquire lock".into()))?;
 
     insights.files_analyzed += 1;
     insights.total_lines += metrics.lines_of_code;
-    
-    let extension = path.extension()
+
+    let extension = path
+        .extension()
         .and_then(|ext| ext.to_str())
         .unwrap_or("unknown")
         .to_lowercase();
-    
+
     *insights.language_stats.entry(extension).or_insert(0) += 1;
     insights.metrics_by_file.insert(file_path, metrics.clone());
     insights.security_summary.extend(metrics.security_issues);
@@ -166,7 +170,7 @@ fn calculate_metrics(path: &Path, content: &str, config: &AppConfig) -> Result<C
     let lines_of_code = lines.len();
     let comment_lines = count_comments(&lines);
     let complexity = calculate_complexity(&lines);
-    let dependencies = detect_dependencies(&lines);
+    let dependencies = extract_dependencies(&lines);
     let security_issues = check_security_issues(&lines, config);
     let last_modified = fs::metadata(path)
         .map_err(|e| DevFlowError::Io(e))?
@@ -186,11 +190,14 @@ fn calculate_metrics(path: &Path, content: &str, config: &AppConfig) -> Result<C
 
 fn is_ignored(path: &Path, ignored_patterns: &[String]) -> bool {
     let path_str = path.to_string_lossy();
-    ignored_patterns.iter().any(|pattern| path_str.contains(pattern))
+    ignored_patterns
+        .iter()
+        .any(|pattern| path_str.contains(pattern))
 }
 
 fn count_comments(lines: &[&str]) -> usize {
-    lines.iter()
+    lines
+        .iter()
         .filter(|line| {
             let trimmed = line.trim();
             trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with("*")
@@ -200,8 +207,7 @@ fn count_comments(lines: &[&str]) -> usize {
 
 fn calculate_complexity(lines: &[&str]) -> f64 {
     let control_flow_keywords = [
-        "if", "else", "while", "for", "match", "loop",
-        "break", "continue", "return",
+        "if", "else", "while", "for", "match", "loop", "break", "continue", "return",
     ];
 
     let mut complexity = 1.0;
@@ -216,13 +222,15 @@ fn calculate_complexity(lines: &[&str]) -> f64 {
     complexity
 }
 
-fn detect_dependencies(lines: &[&str]) -> Vec<String> {
+fn extract_dependencies(lines: &[&str]) -> Vec<String> {
     let mut deps = Vec::new();
     for line in lines {
         if line.trim().starts_with("use ") {
-            if let Some(dep) = line.trim()
+            if let Some(dep) = line
+                .trim()
                 .strip_prefix("use ")
-                .and_then(|s| s.split("::").next()) {
+                .and_then(|s| s.split("::").next())
+            {
                 deps.push(dep.to_string());
             }
         }
@@ -234,18 +242,18 @@ fn detect_dependencies(lines: &[&str]) -> Vec<String> {
 
 fn check_security_issues(lines: &[&str], config: &AppConfig) -> Vec<SecurityIssue> {
     let mut issues = Vec::new();
-    
+
     for (i, line) in lines.iter().enumerate() {
         for pattern in &config.security_patterns {
             if line.contains(pattern) {
                 issues.push(SecurityIssue {
                     severity: IssueSeverity::High,
-                    description: format!("Potentially unsafe pattern found: {}", pattern),
+                    description: format!("Found security pattern: {}", pattern),
                     line_number: Some(i + 1),
                 });
             }
         }
     }
-    
+
     issues
 }

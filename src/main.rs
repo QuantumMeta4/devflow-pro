@@ -1,17 +1,7 @@
-use std::{
-    path::PathBuf,
-    fs,
-    process,
-};
 use clap::Parser;
-use log::{info, error};
-use devflow_pro::{
-    analyze_codebase,
-    AppConfig,
-    Result,
-    DevFlowError,
-    ProjectInsights,
-};
+use devflow_pro::{analyze_codebase, AppConfig, DevFlowError, ProjectInsights, Result};
+use log::{error, info};
+use std::{fs, path::PathBuf, process};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -46,9 +36,12 @@ struct Args {
 fn main() {
     env_logger::init();
 
-    if let Err(e) = run() {
-        error!("Error: {}", e);
-        process::exit(1);
+    match run() {
+        Ok(_) => (),
+        Err(e) => {
+            error!("Error: {}", e);
+            process::exit(1);
+        }
     }
 }
 
