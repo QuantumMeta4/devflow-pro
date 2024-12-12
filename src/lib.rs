@@ -84,18 +84,18 @@ impl ProjectInsights {
 }
 
 /// Analyzes a codebase at the given path using the provided configuration.
-/// 
+///
 /// # Arguments
 /// * `path` - The path to the codebase to analyze
 /// * `config` - Configuration for the analysis
-/// 
+///
 /// # Returns
 /// * `Result<ProjectInsights>` - Analysis results or an error
-/// 
+///
 /// # Errors
 /// This function can return the following errors:
 /// * `DevFlowError::Io` - If there are file system access issues
-/// * `DevFlowError::Thread` - If there are thread synchronization issues
+/// * `DevFlowError::Thread` - If there are issues with parallel processing
 /// * `DevFlowError::InvalidPath` - If the provided path is invalid
 pub fn analyze_codebase(path: &Path, config: &AppConfig) -> Result<ProjectInsights> {
     let insights = Arc::new(Mutex::new(ProjectInsights::new()));
@@ -150,7 +150,7 @@ fn analyze_file(
     *insights.language_stats.entry(extension).or_insert(0) += 1;
     insights.metrics_by_file.insert(file_path, metrics.clone());
     insights.security_summary.extend(metrics.security_issues);
-    
+
     drop(insights);
     Ok(())
 }

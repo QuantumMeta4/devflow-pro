@@ -120,8 +120,14 @@ fn print_formatted_insights(insights: &ProjectInsights) {
 
     println!("📈 Overall Statistics");
     println!("──────────────────────");
-    println!("Files Analyzed: {files_analyzed}", files_analyzed = insights.files_analyzed);
-    println!("Total Lines of Code: {total_lines}", total_lines = insights.total_lines);
+    println!(
+        "Files Analyzed: {files_analyzed}",
+        files_analyzed = insights.files_analyzed
+    );
+    println!(
+        "Total Lines of Code: {total_lines}",
+        total_lines = insights.total_lines
+    );
     println!();
 
     println!("🗂  Language Distribution");
@@ -143,7 +149,10 @@ fn print_formatted_insights(insights: &ProjectInsights) {
             comments = metrics.comment_lines
         );
         if !metrics.dependencies.is_empty() {
-            println!("    Dependencies: {deps}", deps = metrics.dependencies.join(", "));
+            println!(
+                "    Dependencies: {deps}",
+                deps = metrics.dependencies.join(", ")
+            );
         }
         println!();
     }
@@ -160,5 +169,8 @@ fn print_formatted_insights(insights: &ProjectInsights) {
         }
     }
 
-    println!("Analysis completed at: {timestamp}\n", timestamp = insights.analysis_timestamp);
+    println!(
+        "Analysis completed at: {timestamp}\n",
+        timestamp = insights.analysis_timestamp
+    );
 }
