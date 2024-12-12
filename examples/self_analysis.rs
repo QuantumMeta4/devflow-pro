@@ -110,12 +110,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Security Audit
     println!("🔒 Security Audit:");
-    let security = llama.analyze_code(code, AnalysisType::SecurityAudit).await?;
+    let security = llama
+        .analyze_code(code, AnalysisType::SecurityAudit)
+        .await?;
     println!("{}\n", security.summary);
 
     // Documentation
     println!("📚 Documentation:");
-    let docs = llama.analyze_code(code, AnalysisType::Documentation).await?;
+    let docs = llama
+        .analyze_code(code, AnalysisType::Documentation)
+        .await?;
     println!("{}\n", docs.summary);
 
     Ok(())

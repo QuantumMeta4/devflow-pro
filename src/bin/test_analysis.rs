@@ -1,5 +1,5 @@
 use devflow_pro::ai::llama::LlamaCoder;
-use devflow_pro::ai::types::{LlamaConfig, AnalysisType};
+use devflow_pro::ai::types::{AnalysisType, LlamaConfig};
 
 #[tokio::main]
 async fn main() {
@@ -7,10 +7,10 @@ async fn main() {
 
     // Create test configuration
     let config = LlamaConfig::default();
-    
+
     println!("1️⃣ Testing Code Review");
     println!("────────────────────");
-    
+
     // Initialize the LlamaCoder
     match LlamaCoder::new(config.clone()).await {
         Ok(llama) => {

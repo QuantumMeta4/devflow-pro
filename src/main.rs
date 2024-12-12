@@ -1,6 +1,9 @@
 use clap::Parser;
+use devflow_pro::ai::{
+    types::{AnalysisType, LlamaConfig},
+    LlamaCoder,
+};
 use devflow_pro::{analyze_codebase, AppConfig, DevFlowError, ProjectInsights, Result};
-use devflow_pro::ai::{LlamaCoder, types::{LlamaConfig, AnalysisType}};
 use log::{error, info};
 use std::{fs, path::PathBuf, process};
 
@@ -53,8 +56,13 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(
-        if Args::parse().verbose { "debug" } else { "info" }
-    )).init();
+        if Args::parse().verbose {
+            "debug"
+        } else {
+            "info"
+        },
+    ))
+    .init();
 
     info!("Starting analysis of {}", Args::parse().path.display());
 
@@ -113,15 +121,15 @@ async fn run() -> Result<ProjectInsights> {
     // Run AI analysis if enabled
     if _args.ai {
         let llama = LlamaCoder::new(LlamaConfig::default()).await?;
-        
+
         // Get the top 5 most complex files for AI analysis
         let mut files: Vec<_> = insights.file_metrics.iter().collect();
         files.sort_by(|a, b| b.1.complexity.partial_cmp(&a.1.complexity).unwrap());
-        
+
         for (path, metrics) in files.iter().take(5) {
             if let Ok(content) = fs::read_to_string(path) {
                 info!("Running AI analysis on: {}", path);
-                
+
                 // Extract a representative sample of the code
                 let sample = if content.len() > 5000 {
                     let lines: Vec<&str> = content.lines().collect();
@@ -132,7 +140,7 @@ async fn run() -> Result<ProjectInsights> {
                     } else {
                         1
                     };
-                    
+
                     let mut sample = String::new();
                     for i in (0..total_lines).step_by(stride).take(sample_lines) {
                         sample.push_str(lines[i]);
@@ -142,29 +150,35 @@ async fn run() -> Result<ProjectInsights> {
                 } else {
                     content.clone()
                 };
-                
+
                 // Run different types of analysis
-                let review = llama.analyze_code(&sample, AnalysisType::CodeReview).await?;
-                let security = llama.analyze_code(&sample, AnalysisType::SecurityAudit).await?;
-                let optimization = llama.analyze_code(&sample, AnalysisType::Optimization).await?;
-                
+                let review = llama
+                    .analyze_code(&sample, AnalysisType::CodeReview)
+                    .await?;
+                let security = llama
+                    .analyze_code(&sample, AnalysisType::SecurityAudit)
+                    .await?;
+                let optimization = llama
+                    .analyze_code(&sample, AnalysisType::Optimization)
+                    .await?;
+
                 println!("\n🤖 AI Analysis for {}", path);
                 println!("═══════════════════════════════\n");
-                
+
                 println!("📁 File Info");
                 println!("──────────");
                 println!("Lines of Code: {}", metrics.lines_of_code);
                 println!("Complexity: {:.1}", metrics.complexity);
                 println!("Comments: {}\n", metrics.comment_lines);
-                
+
                 println!("📝 Code Review");
                 println!("──────────────");
                 println!("{}\n", review.summary);
-                
+
                 println!("🔒 Security Analysis");
                 println!("──────────────────");
                 println!("{}\n", security.summary);
-                
+
                 println!("⚡ Optimization Suggestions");
                 println!("────────────────────────");
                 println!("{}\n", optimization.summary);

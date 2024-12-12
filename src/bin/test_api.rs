@@ -1,5 +1,5 @@
 use devflow_pro::ai::llama::LlamaCoder;
-use devflow_pro::ai::types::{LlamaConfig, AnalysisType};
+use devflow_pro::ai::types::{AnalysisType, LlamaConfig};
 
 #[tokio::main]
 async fn main() {
@@ -17,10 +17,13 @@ async fn main() {
     match LlamaCoder::new(config).await {
         Ok(llama) => {
             println!("✅ Successfully initialized LlamaCoder");
-            
+
             // Test simple code analysis
             let test_code = "fn hello() { println!(\"Hello, World!\"); }";
-            match llama.analyze_code(test_code, AnalysisType::CodeReview).await {
+            match llama
+                .analyze_code(test_code, AnalysisType::CodeReview)
+                .await
+            {
                 Ok(result) => {
                     println!("✅ API call successful!");
                     println!("Confidence: {}", result.confidence);

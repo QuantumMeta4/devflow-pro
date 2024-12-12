@@ -117,27 +117,29 @@ impl LlamaCoder {
         };
 
         let mut retries = 0;
-        
+
         loop {
             match self.make_api_request(&request).await {
                 Ok(result) => {
-                    let summary = result.output
+                    let summary = result
+                        .output
                         .and_then(|o| o.choices.first().map(|c| c.text.trim().to_string()))
                         .unwrap_or_else(|| "No analysis available".to_string());
 
                     let suggestions = extract_suggestions(&summary);
-                    
+
                     // Ensure we have at least one suggestion
                     let suggestions = if suggestions.is_empty() {
                         // Extract potential suggestions from the summary
-                        summary.lines()
+                        summary
+                            .lines()
                             .filter(|line| {
                                 let line = line.trim().to_lowercase();
-                                line.contains("suggest") || 
-                                line.contains("recommend") || 
-                                line.contains("could") || 
-                                line.contains("should") ||
-                                line.contains("improve")
+                                line.contains("suggest")
+                                    || line.contains("recommend")
+                                    || line.contains("could")
+                                    || line.contains("should")
+                                    || line.contains("improve")
                             })
                             .map(|s| s.trim().to_string())
                             .collect()
@@ -168,7 +170,10 @@ impl LlamaCoder {
         }
     }
 
-    async fn make_api_request(&self, request: &TogetherAIRequest) -> Result<TogetherAIResponse, DevFlowError> {
+    async fn make_api_request(
+        &self,
+        request: &TogetherAIRequest,
+    ) -> Result<TogetherAIResponse, DevFlowError> {
         let response = self
             .client
             .post("https://api.together.xyz/inference")
@@ -196,13 +201,20 @@ impl LlamaCoder {
 
 fn extract_suggestions(analysis: &str) -> Vec<String> {
     let mut suggestions = Vec::new();
-    
+
     // Extract suggestions from bullet points and numbered lists
     for line in analysis.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with('•') || trimmed.starts_with('-') || 
-           (trimmed.starts_with(char::is_numeric) && trimmed.contains('.')) {
-            suggestions.push(trimmed.trim_start_matches(|c: char| !c.is_alphabetic()).trim().to_string());
+        if trimmed.starts_with('•')
+            || trimmed.starts_with('-')
+            || (trimmed.starts_with(char::is_numeric) && trimmed.contains('.'))
+        {
+            suggestions.push(
+                trimmed
+                    .trim_start_matches(|c: char| !c.is_alphabetic())
+                    .trim()
+                    .to_string(),
+            );
         }
     }
 
@@ -210,13 +222,13 @@ fn extract_suggestions(analysis: &str) -> Vec<String> {
     if suggestions.is_empty() {
         for line in analysis.lines() {
             let trimmed = line.trim();
-            if trimmed.len() > 10 && (
-                trimmed.contains("suggest") || 
-                trimmed.contains("recommend") || 
-                trimmed.contains("could") || 
-                trimmed.contains("should") ||
-                trimmed.contains("improve")
-            ) {
+            if trimmed.len() > 10
+                && (trimmed.contains("suggest")
+                    || trimmed.contains("recommend")
+                    || trimmed.contains("could")
+                    || trimmed.contains("should")
+                    || trimmed.contains("improve"))
+            {
                 suggestions.push(trimmed.to_string());
             }
         }
@@ -238,11 +250,17 @@ fn calculate_confidence(analysis: &str) -> f64 {
     ];
 
     let base_confidence: f64 = 0.5;
-    let confidence = factors.iter()
-        .fold(base_confidence, |acc, (found, weight)| {
-            if *found { acc + weight } else { acc }
-        });
-    
+    let confidence = factors.iter().fold(
+        base_confidence,
+        |acc, (found, weight)| {
+            if *found {
+                acc + weight
+            } else {
+                acc
+            }
+        },
+    );
+
     if confidence > 1.0 {
         1.0
     } else if confidence < 0.0 {

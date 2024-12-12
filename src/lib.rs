@@ -2,11 +2,11 @@ use chrono::{DateTime, Utc};
 use ignore::Walk;
 use log::{error, info};
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub mod ai;
@@ -135,7 +135,10 @@ pub fn analyze_codebase(path: &Path, config: &AppConfig) -> Result<ProjectInsigh
         .into_inner()
         .map_err(|_| DevFlowError::Thread("Failed to acquire lock".into()))?;
 
-    info!("Completed analysis of {} files", final_insights.file_metrics.len());
+    info!(
+        "Completed analysis of {} files",
+        final_insights.file_metrics.len()
+    );
 
     Ok(final_insights)
 }
@@ -166,10 +169,14 @@ pub fn analyze_file(
                     // Log the non-UTF-8 file but continue processing
                     error!("Skipping non-UTF-8 file: {}", path.display());
                     return Ok(());
-                },
+                }
                 Err(read_err) => {
-                    error!("Failed to read file {}: {} (Original error: {})", 
-                           path.display(), read_err, e);
+                    error!(
+                        "Failed to read file {}: {} (Original error: {})",
+                        path.display(),
+                        read_err,
+                        e
+                    );
                     return Ok(());
                 }
             }
@@ -180,11 +187,17 @@ pub fn analyze_file(
 
     // Calculate metrics
     let metrics = calculate_metrics(path, &content, config)?;
-    let language = normalize_language_extension(path.extension().and_then(|e| e.to_str()).unwrap_or("unknown"));
+    let language = normalize_language_extension(
+        path.extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("unknown"),
+    );
     let security_issues = check_security_issues(&lines, config);
 
     // Acquire lock and update insights
-    let mut insights_guard = insights.lock().map_err(|_| DevFlowError::Thread("Failed to acquire lock".into()))?;
+    let mut insights_guard = insights
+        .lock()
+        .map_err(|_| DevFlowError::Thread("Failed to acquire lock".into()))?;
 
     // Increment files analyzed
     insights_guard.files_analyzed += 1;
@@ -193,10 +206,15 @@ pub fn analyze_file(
     insights_guard.total_lines += lines.len();
 
     // Update language distribution
-    *insights_guard.language_distribution.entry(normalize_language_extension(&language)).or_insert(0) += 1;
+    *insights_guard
+        .language_distribution
+        .entry(normalize_language_extension(&language))
+        .or_insert(0) += 1;
 
     // Store file metrics
-    insights_guard.file_metrics.insert(path.to_string_lossy().to_string(), metrics);
+    insights_guard
+        .file_metrics
+        .insert(path.to_string_lossy().to_string(), metrics);
 
     // Extend security summary
     insights_guard.security_summary.extend(security_issues);
@@ -225,7 +243,8 @@ fn calculate_metrics(path: &Path, content: &str, config: &AppConfig) -> Result<C
         let trimmed = line.trim();
         if trimmed.is_empty() {
             metrics.blank_lines += 1;
-        } else if trimmed.starts_with("//") || trimmed.starts_with("#") || trimmed.starts_with("/*") {
+        } else if trimmed.starts_with("//") || trimmed.starts_with("#") || trimmed.starts_with("/*")
+        {
             metrics.comment_lines += 1;
         } else {
             metrics.lines_of_code += 1;
@@ -254,14 +273,14 @@ fn is_ignored(path: &Path, ignored_patterns: &[String]) -> bool {
 
     // Ignore binary and non-source files
     let binary_extensions = &[
-        "png", "jpg", "jpeg", "gif", "ico", "bmp", "webp",  // Images
-        "ttf", "otf", "woff", "woff2",  // Fonts
-        "mp3", "wav", "ogg", "flac",  // Audio
-        "mp4", "avi", "mov", "mkv",  // Video
-        "zip", "rar", "7z", "tar", "gz", "bz2",  // Archives
-        "pdf", "doc", "docx", "xls", "xlsx",  // Documents
-        "exe", "dll", "so", "dylib",  // Binaries
-        "lock", "map",  // Dependency lock files and source maps
+        "png", "jpg", "jpeg", "gif", "ico", "bmp", "webp", // Images
+        "ttf", "otf", "woff", "woff2", // Fonts
+        "mp3", "wav", "ogg", "flac", // Audio
+        "mp4", "avi", "mov", "mkv", // Video
+        "zip", "rar", "7z", "tar", "gz", "bz2", // Archives
+        "pdf", "doc", "docx", "xls", "xlsx", // Documents
+        "exe", "dll", "so", "dylib", // Binaries
+        "lock", "map", // Dependency lock files and source maps
     ];
 
     path.extension()
@@ -279,32 +298,31 @@ fn normalize_language_extension(ext: &str) -> String {
         // Markdown variants
         "md" | "markdown" => "md".to_string(),
         // Handle special cases
-        "1" => "man".to_string(),  // Man page files
+        "1" => "man".to_string(), // Man page files
         "bsd" => "config".to_string(),
         "flow" => "type_def".to_string(),
         "bnf" => "grammar".to_string(),
         // Default case
-        _ => ext.to_lowercase()
+        _ => ext.to_lowercase(),
     }
 }
 
 fn calculate_complexity(content: &str) -> f64 {
-    let branches = content.matches("if ")
-        .count() + content.matches("while ")
-        .count() + content.matches("for ")
-        .count() + content.matches("match ")
-        .count();
-    
+    let branches = content.matches("if ").count()
+        + content.matches("while ").count()
+        + content.matches("for ").count()
+        + content.matches("match ").count();
+
     1.0 + (branches as f64 * 0.1)
 }
 
 fn extract_dependencies(content: &str) -> Vec<String> {
     let mut deps = Vec::new();
-    
+
     // Process each line
     for line in content.lines() {
         let trimmed = line.trim();
-        
+
         // Rust dependencies
         if trimmed.starts_with("use ") {
             if let Some(dep) = trimmed
@@ -327,13 +345,17 @@ fn extract_dependencies(content: &str) -> Vec<String> {
         // JavaScript/TypeScript imports
         else if trimmed.starts_with("import ") || trimmed.starts_with("require(") {
             if let Some(dep) = if trimmed.contains("from ") {
-                trimmed.split("from ")
-                    .nth(1)
-                    .and_then(|s| s.trim_matches(|c| c == '\'' || c == '"' || c == ';').split("/").next())
+                trimmed.split("from ").nth(1).and_then(|s| {
+                    s.trim_matches(|c| c == '\'' || c == '"' || c == ';')
+                        .split("/")
+                        .next()
+                })
             } else if trimmed.contains("require(") {
-                trimmed.split("require(")
-                    .nth(1)
-                    .and_then(|s| s.trim_matches(|c| c == '\'' || c == '"' || c == ')' || c == ';').split("/").next())
+                trimmed.split("require(").nth(1).and_then(|s| {
+                    s.trim_matches(|c| c == '\'' || c == '"' || c == ')' || c == ';')
+                        .split("/")
+                        .next()
+                })
             } else {
                 None
             } {
@@ -351,7 +373,7 @@ fn extract_dependencies(content: &str) -> Vec<String> {
             }
         }
     }
-    
+
     deps.sort();
     deps.dedup();
     deps
@@ -366,7 +388,10 @@ fn check_security_issues(lines: &[&str], config: &AppConfig) -> Vec<SecurityIssu
                 let (severity, category) = categorize_security_issue(pattern);
                 issues.push(SecurityIssue {
                     severity,
-                    description: format!("{}: Found potentially unsafe pattern: {}", category, pattern),
+                    description: format!(
+                        "{}: Found potentially unsafe pattern: {}",
+                        category, pattern
+                    ),
                     line_number: Some(i + 1),
                 });
             }
@@ -378,18 +403,26 @@ fn check_security_issues(lines: &[&str], config: &AppConfig) -> Vec<SecurityIssu
 
 fn categorize_security_issue(pattern: &str) -> (IssueSeverity, &'static str) {
     match pattern {
-        p if p.contains("eval") || p.contains("exec") => 
-            (IssueSeverity::Critical, "Command Injection"),
-        p if p.contains("password") || p.contains("secret") || p.contains("token") || p.contains("api") => 
-            (IssueSeverity::High, "Hardcoded Secrets"),
-        p if p.contains("query") || p.contains("sql") => 
-            (IssueSeverity::High, "SQL Injection"),
-        p if p.contains("file") || p.contains("open") || p.contains("read") => 
-            (IssueSeverity::Medium, "Unsafe File Operations"),
-        p if p.contains("unserialize") || p.contains("parse") || p.contains("fromJson") => 
-            (IssueSeverity::Medium, "Unsafe Deserialization"),
-        p if p.contains("innerHTML") || p.contains("write") => 
-            (IssueSeverity::High, "XSS Vulnerability"),
+        p if p.contains("eval") || p.contains("exec") => {
+            (IssueSeverity::Critical, "Command Injection")
+        }
+        p if p.contains("password")
+            || p.contains("secret")
+            || p.contains("token")
+            || p.contains("api") =>
+        {
+            (IssueSeverity::High, "Hardcoded Secrets")
+        }
+        p if p.contains("query") || p.contains("sql") => (IssueSeverity::High, "SQL Injection"),
+        p if p.contains("file") || p.contains("open") || p.contains("read") => {
+            (IssueSeverity::Medium, "Unsafe File Operations")
+        }
+        p if p.contains("unserialize") || p.contains("parse") || p.contains("fromJson") => {
+            (IssueSeverity::Medium, "Unsafe Deserialization")
+        }
+        p if p.contains("innerHTML") || p.contains("write") => {
+            (IssueSeverity::High, "XSS Vulnerability")
+        }
         _ => (IssueSeverity::Low, "General Security Issue"),
     }
 }
@@ -421,28 +454,23 @@ impl Default for AppConfig {
                 String::from("exec\\s*\\("),
                 String::from("system\\s*\\("),
                 String::from("shell_exec\\s*\\("),
-                
                 // Hardcoded Secrets
                 String::from("password\\s*="),
                 String::from("api[_-]?key\\s*="),
                 String::from("secret\\s*="),
                 String::from("token\\s*="),
-                
                 // SQL Injection
                 String::from("execute\\s*\\("),
                 String::from("raw\\s*sql"),
                 String::from("\\.query\\s*\\("),
-                
                 // File Operations
                 String::from("file_get_contents\\s*\\("),
                 String::from("fopen\\s*\\("),
                 String::from("readFile\\s*\\("),
-                
                 // Unsafe Deserialization
                 String::from("unserialize\\s*\\("),
                 String::from("JSON\\.parse\\s*\\("),
                 String::from("fromJson\\s*\\("),
-                
                 // XSS Vulnerabilities
                 String::from("innerHTML\\s*="),
                 String::from("document\\.write\\s*\\("),
@@ -462,9 +490,13 @@ pub fn format_report(insights: &ProjectInsights) -> String {
     // Basic Statistics
     output.push_str("📈 Overall Statistics\n");
     output.push_str("──────────────────────\n");
-    output.push_str(&format!("Files Analyzed: {}\n", insights.file_metrics.len()));
+    output.push_str(&format!(
+        "Files Analyzed: {}\n",
+        insights.file_metrics.len()
+    ));
     output.push_str(&format!("Total Lines of Code: {}\n", insights.total_lines));
-    output.push_str(&format!("Average Lines per File: {:.1}\n", 
+    output.push_str(&format!(
+        "Average Lines per File: {:.1}\n",
         if insights.file_metrics.len() > 0 {
             insights.total_lines as f64 / insights.file_metrics.len() as f64
         } else {
@@ -495,8 +527,10 @@ pub fn format_report(insights: &ProjectInsights) -> String {
         output.push_str(&format!("   Blank Lines: {}\n", metrics.blank_lines));
         output.push_str(&format!("   Comments: {}\n", metrics.comment_lines));
         if !metrics.dependencies.is_empty() {
-            output.push_str(&format!("   Dependencies: {}\n", 
-                metrics.dependencies.join(", ")));
+            output.push_str(&format!(
+                "   Dependencies: {}\n",
+                metrics.dependencies.join(", ")
+            ));
         }
         output.push_str("\n");
     }
@@ -505,16 +539,15 @@ pub fn format_report(insights: &ProjectInsights) -> String {
     output.push_str("📊 Code Quality Metrics\n");
     output.push_str("──────────────────────\n");
     let comment_ratio = if insights.total_lines > 0 {
-        files.iter().map(|(_, m)| m.comment_lines).sum::<usize>() as f64 
-        / insights.total_lines as f64 * 100.0
+        files.iter().map(|(_, m)| m.comment_lines).sum::<usize>() as f64
+            / insights.total_lines as f64
+            * 100.0
     } else {
         0.0
     };
     output.push_str(&format!("Comment Ratio: {:.1}%\n", comment_ratio));
-    
-    let avg_complexity = files.iter()
-        .map(|(_, m)| m.complexity)
-        .sum::<f64>() / files.len() as f64;
+
+    let avg_complexity = files.iter().map(|(_, m)| m.complexity).sum::<f64>() / files.len() as f64;
     output.push_str(&format!("Average Complexity: {:.2}\n", avg_complexity));
     output.push_str("\n");
 
@@ -531,8 +564,12 @@ pub fn format_report(insights: &ProjectInsights) -> String {
         };
         *size_categories.entry(category).or_insert(0) += 1;
     }
-    let categories = ["Small (0-1KB)", "Medium (1-10KB)", 
-                     "Large (10-100KB)", "Very Large (>100KB)"];
+    let categories = [
+        "Small (0-1KB)",
+        "Medium (1-10KB)",
+        "Large (10-100KB)",
+        "Very Large (>100KB)",
+    ];
     for cat in categories.iter() {
         if let Some(count) = size_categories.get(cat) {
             output.push_str(&format!("{}: {} files\n", cat, count));
@@ -546,14 +583,19 @@ pub fn format_report(insights: &ProjectInsights) -> String {
     let mut recent_files: Vec<_> = insights.file_metrics.iter().collect();
     recent_files.sort_by(|a, b| b.1.last_modified.cmp(&a.1.last_modified));
     for (path, metrics) in recent_files.iter().take(5) {
-        output.push_str(&format!("- {}\n  Last Modified: {}\n", 
-            path, metrics.last_modified.format("%Y-%m-%d %H:%M:%S")));
+        output.push_str(&format!(
+            "- {}\n  Last Modified: {}\n",
+            path,
+            metrics.last_modified.format("%Y-%m-%d %H:%M:%S")
+        ));
     }
     output.push_str("\n");
 
     // Timestamp
-    output.push_str(&format!("Analysis completed at: {}\n", 
-        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")));
+    output.push_str(&format!(
+        "Analysis completed at: {}\n",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+    ));
 
     output
 }
