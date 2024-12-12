@@ -1,14 +1,79 @@
 [package]
 name = "devflow-pro"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
-authors = ["QuantumMeta4"]
-description = "Advanced codebase analysis tool for project insights and optimization"
+authors = ["DevFlow Team"]
+description = "A comprehensive static code analysis tool for software projects"
+repository = "https://github.com/devflow/devflow-pro"
 license = "MIT"
-documentation = "https://github.com/QuantumMeta4/devflow-pro/docs"
-homepage = "https://github.com/QuantumMeta4/devflow-pro"
-repository = "https://github.com/QuantumMeta4/devflow-pro"
-keywords = ["analysis", "metrics", "optimization", "code-quality"]
+keywords = ["static-analysis", "code-quality", "metrics", "security"]
 categories = ["development-tools", "command-line-utilities"]
+default-run = "devflow-pro"
+
+[lib]
+name = "devflow_pro"
+path = "src/lib.rs"
+
+[[bin]]
+name = "devflow-pro"
+path = "src/main.rs"
 
 [dependencies]
+# CLI and argument parsing
+clap = { version = "4.4", features = ["derive"] }
+
+# Async and parallel processing
+rayon = "1.8"
+tokio = { version = "1.35", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "1.0"
+
+# Logging and diagnostics
+log = "0.4"
+env_logger = "0.10"
+tracing = "0.1"
+
+# Date and time
+chrono = { version = "0.4", features = ["serde"] }
+
+# File system operations
+ignore = "0.4"
+walkdir = "2.4"
+globset = "0.4"
+
+# Code analysis
+regex = "1.10"
+syn = { version = "2.0", features = ["full", "extra-traits"] }
+tree-sitter = "0.20"
+
+[dev-dependencies]
+criterion = "0.5"
+tempfile = "3.8"
+pretty_assertions = "1.4"
+test-case = "3.3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+opt-level = 3
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[features]
+default = ["full"]
+full = ["security-checks", "complexity-analysis", "dependency-tracking"]
+security-checks = []
+complexity-analysis = []
+dependency-tracking = []
+
+[package.metadata]
+msrv = "1.70.0"

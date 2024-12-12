@@ -1,1 +1,43 @@
-/target
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment and secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Logs and diagnostics
+*.log
+logs/
+debug/
+coverage/
+
+# Build outputs
+dist/
+build/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+*.profraw
+cobertura.xml
+tarpaulin-report.*
+
+# Documentation artifacts
+doc/
+target/doc/
+
+# Project specific
+devflow-report.txt
+config/*.local.json
