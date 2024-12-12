@@ -97,7 +97,11 @@ async fn run() -> Result<ProjectInsights> {
     let target_dir = args.path.canonicalize()?;
 
     if !target_dir.exists() {
-        return Err(DevFlowError::InvalidPath(format!("Path does not exist: {target_dir:?}")));
+        return Err(DevFlowError::InvalidPath(format!(
+            "Path does not exist: {}\n\
+             Please ensure the path is correct and try again.",
+            target_dir.display()
+        )));
     }
 
     let mut ignored_patterns = vec![
