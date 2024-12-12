@@ -117,23 +117,11 @@ DEVFLOW_MAX_THREADS=4
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Open a Pull Request
+We welcome contributions! Please read our [Contributing Guidelines](CONTRIBUTING.md) to get started.
 
-### Development Setup
-```bash
-# Install dependencies
-cargo build
+## 📜 Code of Conduct
 
-# Run tests
-cargo test
-
-# Run benchmarks
-cargo bench
-```
+Please note that we have a [Code of Conduct](CODE_OF_CONDUCT.md) that we expect all contributors to follow.
 
 ## 📊 Project Status
 
