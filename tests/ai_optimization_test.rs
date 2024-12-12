@@ -12,8 +12,7 @@ async fn test_code_optimization() {
     }
 
     // Initialize LlamaCoder
-    let coder = LlamaCoder::new(LlamaConfig::default())
-        .expect("Failed to initialize LlamaCoder");
+    let coder = LlamaCoder::new(LlamaConfig::default()).expect("Failed to initialize LlamaCoder");
 
     // Test code to analyze
     let test_code = r"
@@ -35,7 +34,10 @@ async fn test_code_optimization() {
         .expect("Failed to analyze code");
 
     // Verify analysis results
-    assert!(!analysis.suggestions.is_empty(), "Expected optimization suggestions");
+    assert!(
+        !analysis.suggestions.is_empty(),
+        "Expected optimization suggestions"
+    );
     assert!(
         analysis.confidence > 0.0,
         "Expected non-zero confidence score"

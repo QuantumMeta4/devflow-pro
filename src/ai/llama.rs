@@ -1,7 +1,7 @@
 use crate::DevFlowError;
 use dotenv::dotenv;
+use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use reqwest::ClientBuilder;
-use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use std::{env, time::Duration};
 use tokio::time::sleep;
@@ -52,9 +52,9 @@ struct Choice {
 
 impl LlamaCoder {
     /// Creates a new `LlamaCoder` instance
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if:
     /// - `TOGETHER_API_KEY` environment variable is not set or empty
     /// - Failed to create HTTP client
@@ -88,9 +88,9 @@ impl LlamaCoder {
     }
 
     /// Analyzes code using specified analysis type
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if:
     /// - API request fails
     /// - Response parsing fails

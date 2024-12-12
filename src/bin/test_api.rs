@@ -13,7 +13,9 @@ async fn main() {
 
             // Test a simple code analysis
             let test_code = "fn main() { println!(\"Hello, World!\"); }";
-            let result = llama.analyze_code(test_code, AnalysisType::CodeReview).await;
+            let result = llama
+                .analyze_code(test_code, AnalysisType::CodeReview)
+                .await;
             match result {
                 Ok(analysis) => println!("Analysis result: {analysis:#?}"),
                 Err(e) => println!("❌ API call failed: {e}"),

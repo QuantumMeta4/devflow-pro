@@ -125,9 +125,9 @@ pub fn analyze_codebase(path: &Path, config: &AppConfig) -> Result<ProjectInsigh
         .collect::<Vec<_>>();
 
     // Process files in parallel
-    walker.par_iter().try_for_each(|entry| {
-        analyze_file(entry.path(), &insights, config)
-    })?;
+    walker
+        .par_iter()
+        .try_for_each(|entry| analyze_file(entry.path(), &insights, config))?;
 
     // Return the final insights
     let final_insights = insights
@@ -139,9 +139,9 @@ pub fn analyze_codebase(path: &Path, config: &AppConfig) -> Result<ProjectInsigh
 }
 
 /// Walk through the directory and analyze each file
-/// 
+///
 /// # Errors
-/// 
+///
 /// Returns an error if:
 /// - Cannot read directory entries
 /// - Cannot get file type of an entry
@@ -168,9 +168,9 @@ pub fn analyze_directory(
 }
 
 /// Analyze a single file and update project insights
-/// 
+///
 /// # Errors
-/// 
+///
 /// Returns an error if:
 /// - File metadata cannot be read
 /// - File contents cannot be read
@@ -277,7 +277,8 @@ fn calculate_metrics(path: &Path, content: &str, config: &AppConfig) -> Result<C
         let trimmed = line.trim();
         if trimmed.is_empty() {
             metrics.blank_lines += 1;
-        } else if trimmed.starts_with("//") || trimmed.starts_with('#') || trimmed.starts_with("/*") {
+        } else if trimmed.starts_with("//") || trimmed.starts_with('#') || trimmed.starts_with("/*")
+        {
             metrics.comment_lines += 1;
         }
         metrics.lines_of_code += 1;
@@ -415,20 +416,20 @@ fn check_security_issues(lines: &[&str], config: &AppConfig) -> Vec<SecurityIssu
         let line_num = line_num + 1;
 
         // Check for hardcoded secrets
-        if (line.contains("password") || line.contains("secret") || line.contains("api_key")) 
-            && (line.contains('=') || line.contains(':')) {
+        if (line.contains("password") || line.contains("secret") || line.contains("api_key"))
+            && (line.contains('=') || line.contains(':'))
+        {
             issues.push(SecurityIssue {
                 severity: IssueSeverity::High,
-                description: format!(
-                    "Potential hardcoded secret found at line {line_num}: {line}"
-                ),
+                description: format!("Potential hardcoded secret found at line {line_num}: {line}"),
                 line_number: Some(line_num),
             });
         }
 
         // Check for SQL injection vulnerabilities
         if (line.contains("SELECT") || line.contains("INSERT") || line.contains("UPDATE"))
-            && (line.contains('\"') || line.contains('\'')) {
+            && (line.contains('\"') || line.contains('\''))
+        {
             issues.push(SecurityIssue {
                 severity: IssueSeverity::High,
                 description: format!(
@@ -442,9 +443,7 @@ fn check_security_issues(lines: &[&str], config: &AppConfig) -> Vec<SecurityIssu
         if line.contains("eval(") || line.contains("exec(") {
             issues.push(SecurityIssue {
                 severity: IssueSeverity::Critical,
-                description: format!(
-                    "Unsafe code execution found at line {line_num}: {line}"
-                ),
+                description: format!("Unsafe code execution found at line {line_num}: {line}"),
                 line_number: Some(line_num),
             });
         }
@@ -458,9 +457,9 @@ fn check_security_issues(lines: &[&str], config: &AppConfig) -> Vec<SecurityIssu
 }
 
 /// Format project insights into a human-readable report
-/// 
+///
 /// # Panics
-/// 
+///
 /// Panics if file complexity comparison fails due to NaN values
 #[must_use]
 pub fn format_report(insights: &ProjectInsights) -> String {
@@ -530,8 +529,8 @@ pub fn format_report(insights: &ProjectInsights) -> String {
     output.push_str(&format!("Comment Ratio: {comment_ratio:.1}%\n"));
 
     #[allow(clippy::cast_precision_loss)]
-    let avg_complexity = files.iter().map(|(_, m)| m.complexity).sum::<f64>() 
-        / (files.len() as f64);
+    let avg_complexity =
+        files.iter().map(|(_, m)| m.complexity).sum::<f64>() / (files.len() as f64);
     output.push_str(&format!("Average Complexity: {avg_complexity:.2}\n\n"));
 
     // File Size Distribution

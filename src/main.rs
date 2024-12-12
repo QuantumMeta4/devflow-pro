@@ -3,7 +3,9 @@ use devflow_pro::ai::{
     types::{AnalysisType, LlamaConfig},
     LlamaCoder,
 };
-use devflow_pro::{analyze_codebase, AppConfig, DevFlowError, IssueSeverity, ProjectInsights, Result};
+use devflow_pro::{
+    analyze_codebase, AppConfig, DevFlowError, IssueSeverity, ProjectInsights, Result,
+};
 use log::{error, info};
 use std::{fs, path::PathBuf, process};
 
