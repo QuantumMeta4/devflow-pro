@@ -1,7 +1,7 @@
 # DevFlow Pro: Multi-Language Static Code Analysis Toolkit 🔍🛡️
 
 ![Build Status](https://github.com/QuantumMeta4/devflow-pro/actions/workflows/rust.yml/badge.svg)
-![Version](https://img.shields.io/badge/version-1.0.2-blue)
+![Version](https://img.shields.io/badge/version-1.0.3-blue)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 ![Rust Version](https://img.shields.io/badge/rust-1.70%2B-orange)
 ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
