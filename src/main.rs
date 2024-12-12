@@ -31,6 +31,18 @@ struct Args {
     /// Output format (json or text)
     #[arg(short, long, default_value = "text")]
     format: String,
+
+    /// Log file path
+    #[arg(short, long)]
+    log_file: Option<PathBuf>,
+
+    /// Ignore patterns
+    #[arg(short, long)]
+    ignore: Option<Vec<String>>,
+
+    /// Security patterns
+    #[arg(short, long)]
+    security_patterns: Option<Vec<String>>,
 }
 
 fn main() {
@@ -45,8 +57,14 @@ fn main() {
     }
 }
 
-fn run() -> Result<()> {
+fn run() -> Result<ProjectInsights> {
     let args = Args::parse();
+
+    if let Some(log_file) = &args.log_file {
+        if let Err(e) = fs::File::create(log_file) {
+            return Err(DevFlowError::Io(e));
+        }
+    }
 
     if args.verbose {
         info!("Starting analysis of {:?}", args.path);
@@ -60,11 +78,12 @@ fn run() -> Result<()> {
     }
 
     let config = AppConfig {
+        ignored_patterns: args.ignore.unwrap_or_default(),
         max_file_size: args.max_file_size,
-        ..AppConfig::default()
+        security_patterns: args.security_patterns.unwrap_or_default(),
     };
 
-    let insights = analyze_codebase(&args.path, config)?;
+    let insights = analyze_codebase(&args.path, &config)?;
 
     match args.output {
         Some(path) => {
@@ -92,7 +111,7 @@ fn run() -> Result<()> {
         info!("Analysis completed successfully");
     }
 
-    Ok(())
+    Ok(insights)
 }
 
 fn print_formatted_insights(insights: &ProjectInsights) {
@@ -101,14 +120,14 @@ fn print_formatted_insights(insights: &ProjectInsights) {
 
     println!("📈 Overall Statistics");
     println!("──────────────────────");
-    println!("Files Analyzed: {}", insights.files_analyzed);
-    println!("Total Lines of Code: {}", insights.total_lines);
+    println!("Files Analyzed: {files_analyzed}", files_analyzed = insights.files_analyzed);
+    println!("Total Lines of Code: {total_lines}", total_lines = insights.total_lines);
     println!();
 
     println!("🗂  Language Distribution");
     println!("──────────────────────");
     for (lang, count) in &insights.language_stats {
-        println!("  {} files: {}", lang, count);
+        println!("  {lang} files: {count}");
     }
     println!();
 
@@ -117,13 +136,14 @@ fn print_formatted_insights(insights: &ProjectInsights) {
     let mut files: Vec<_> = insights.metrics_by_file.iter().collect();
     files.sort_by(|a, b| b.1.complexity.partial_cmp(&a.1.complexity).unwrap());
     for (path, metrics) in files.iter().take(5) {
-        println!("  {} (Complexity: {:.1})", path, metrics.complexity);
+        println!("  {path} (Complexity: {:.1})", metrics.complexity);
         println!(
-            "    Lines: {}, Comments: {}",
-            metrics.lines_of_code, metrics.comment_lines
+            "    Lines: {lines}, Comments: {comments}",
+            lines = metrics.lines_of_code,
+            comments = metrics.comment_lines
         );
         if !metrics.dependencies.is_empty() {
-            println!("    Dependencies: {}", metrics.dependencies.join(", "));
+            println!("    Dependencies: {deps}", deps = metrics.dependencies.join(", "));
         }
         println!();
     }
@@ -132,13 +152,13 @@ fn print_formatted_insights(insights: &ProjectInsights) {
         println!("⚠️  Security Issues");
         println!("──────────────────────");
         for issue in &insights.security_summary {
-            println!("  • {}", issue.description);
+            println!("  • {desc}", desc = issue.description);
             if let Some(line) = issue.line_number {
-                println!("    Line: {}", line);
+                println!("    Line: {line}");
             }
             println!();
         }
     }
 
-    println!("Analysis completed at: {}\n", insights.analysis_timestamp);
+    println!("Analysis completed at: {timestamp}\n", timestamp = insights.analysis_timestamp);
 }

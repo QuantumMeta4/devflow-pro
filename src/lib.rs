@@ -59,7 +59,7 @@ pub enum IssueSeverity {
     Critical,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct ProjectInsights {
     pub files_analyzed: usize,
     pub total_lines: usize,
@@ -69,32 +69,8 @@ pub struct ProjectInsights {
     pub analysis_timestamp: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone)]
-pub struct AppConfig {
-    pub max_file_size: usize,
-    pub ignored_patterns: Vec<String>,
-    pub security_patterns: Vec<String>,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            max_file_size: 1024 * 1024, // 1MB
-            ignored_patterns: vec![
-                String::from(".git"),
-                String::from("target"),
-                String::from("node_modules"),
-            ],
-            security_patterns: vec![
-                String::from("eval\\s*\\("),
-                String::from("exec\\s*\\("),
-                String::from("password\\s*="),
-            ],
-        }
-    }
-}
-
 impl ProjectInsights {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             files_analyzed: 0,
@@ -107,27 +83,40 @@ impl ProjectInsights {
     }
 }
 
-pub fn analyze_codebase(path: &Path, config: AppConfig) -> Result<ProjectInsights> {
+/// Analyzes a codebase at the given path using the provided configuration.
+/// 
+/// # Arguments
+/// * `path` - The path to the codebase to analyze
+/// * `config` - Configuration for the analysis
+/// 
+/// # Returns
+/// * `Result<ProjectInsights>` - Analysis results or an error
+/// 
+/// # Errors
+/// This function can return the following errors:
+/// * `DevFlowError::Io` - If there are file system access issues
+/// * `DevFlowError::Thread` - If there are thread synchronization issues
+/// * `DevFlowError::InvalidPath` - If the provided path is invalid
+pub fn analyze_codebase(path: &Path, config: &AppConfig) -> Result<ProjectInsights> {
     let insights = Arc::new(Mutex::new(ProjectInsights::new()));
 
+    #[allow(clippy::redundant_closure_for_method_calls)]
     let walker = Walk::new(path)
         .filter_map(|entry| entry.ok())
         .filter(|entry| {
-            entry.file_type().map(|ft| ft.is_file()).unwrap_or(false)
+            entry.file_type().is_some_and(|ft| ft.is_file())
                 && !is_ignored(entry.path(), &config.ignored_patterns)
         })
         .collect::<Vec<_>>();
 
     walker
         .par_iter()
-        .try_for_each(|entry| -> Result<()> { analyze_file(entry.path(), &insights, &config) })?;
+        .try_for_each(|entry| analyze_file(entry.path(), &insights, config))?;
 
-    let result = Arc::try_unwrap(insights)
+    Arc::try_unwrap(insights)
         .map_err(|_| DevFlowError::Thread("Failed to unwrap Arc".into()))?
         .into_inner()
-        .map_err(|_| DevFlowError::Thread("Failed to acquire lock".into()))?;
-
-    Ok(result)
+        .map_err(|_| DevFlowError::Thread("Failed to acquire lock".into()))
 }
 
 fn analyze_file(
@@ -135,7 +124,7 @@ fn analyze_file(
     insights: &Arc<Mutex<ProjectInsights>>,
     config: &AppConfig,
 ) -> Result<()> {
-    let content = fs::read_to_string(path).map_err(|e| DevFlowError::Io(e))?;
+    let content = fs::read_to_string(path).map_err(DevFlowError::Io)?;
 
     if content.len() > config.max_file_size {
         warn!("File too large to analyze: {:?}", path);
@@ -161,7 +150,8 @@ fn analyze_file(
     *insights.language_stats.entry(extension).or_insert(0) += 1;
     insights.metrics_by_file.insert(file_path, metrics.clone());
     insights.security_summary.extend(metrics.security_issues);
-
+    
+    drop(insights);
     Ok(())
 }
 
@@ -173,10 +163,10 @@ fn calculate_metrics(path: &Path, content: &str, config: &AppConfig) -> Result<C
     let dependencies = extract_dependencies(&lines);
     let security_issues = check_security_issues(&lines, config);
     let last_modified = fs::metadata(path)
-        .map_err(|e| DevFlowError::Io(e))?
+        .map_err(DevFlowError::Io)?
         .modified()
-        .map_err(|e| DevFlowError::Io(e))
-        .map(|time| DateTime::from(time))?;
+        .map_err(DevFlowError::Io)?
+        .into();
 
     Ok(CodeMetrics {
         lines_of_code,
@@ -200,7 +190,7 @@ fn count_comments(lines: &[&str]) -> usize {
         .iter()
         .filter(|line| {
             let trimmed = line.trim();
-            trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with("*")
+            trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with('*')
         })
         .count()
 }
@@ -248,7 +238,7 @@ fn check_security_issues(lines: &[&str], config: &AppConfig) -> Vec<SecurityIssu
             if line.contains(pattern) {
                 issues.push(SecurityIssue {
                     severity: IssueSeverity::High,
-                    description: format!("Found security pattern: {}", pattern),
+                    description: format!("Found security pattern: {pattern}"),
                     line_number: Some(i + 1),
                 });
             }
@@ -256,4 +246,29 @@ fn check_security_issues(lines: &[&str], config: &AppConfig) -> Vec<SecurityIssu
     }
 
     issues
+}
+
+#[derive(Debug, Clone)]
+pub struct AppConfig {
+    pub max_file_size: usize,
+    pub ignored_patterns: Vec<String>,
+    pub security_patterns: Vec<String>,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            max_file_size: 1024 * 1024, // 1MB
+            ignored_patterns: vec![
+                String::from(".git"),
+                String::from("target"),
+                String::from("node_modules"),
+            ],
+            security_patterns: vec![
+                String::from("eval\\s*\\("),
+                String::from("exec\\s*\\("),
+                String::from("password\\s*="),
+            ],
+        }
+    }
 }

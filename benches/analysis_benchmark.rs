@@ -1,7 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use std::fs::{self, File};
+use criterion::{criterion_group, criterion_main, Criterion};
+use std::fs::File;
 use std::io::Write;
-use std::path::Path;
 use tempfile::TempDir;
 
 fn create_test_project() -> TempDir {
@@ -21,12 +20,17 @@ fn create_test_project() -> TempDir {
     ];
 
     for (name, content) in files {
-        let path = dir.path().join(name);
-        let mut file = File::create(path).unwrap();
-        writeln!(file, "{}", content).unwrap();
+        create_test_file(&dir, name, content).unwrap();
     }
 
     dir
+}
+
+fn create_test_file(dir: &TempDir, name: &str, content: &str) -> std::io::Result<()> {
+    let path = dir.path().join(name);
+    let mut file = File::create(path)?;
+    writeln!(file, "{content}")?;
+    Ok(())
 }
 
 fn benchmark_small_project(c: &mut Criterion) {
@@ -35,7 +39,7 @@ fn benchmark_small_project(c: &mut Criterion) {
     c.bench_function("analyze_small_project", |b| {
         b.iter(|| {
             let config = devflow_pro::AppConfig::default();
-            devflow_pro::analyze_codebase(test_dir.path(), config).unwrap();
+            devflow_pro::analyze_codebase(test_dir.path(), &config).unwrap();
         });
     });
 }
@@ -46,9 +50,8 @@ fn benchmark_file_analysis(c: &mut Criterion) {
 
     c.bench_function("analyze_single_file", |b| {
         b.iter(|| {
-            let mut insights = devflow_pro::ProjectInsights::default();
             let config = devflow_pro::AppConfig::default();
-            devflow_pro::analyze_file(&test_file, &mut insights, &config).unwrap();
+            devflow_pro::analyze_codebase(&test_file, &config).unwrap();
         });
     });
 }
