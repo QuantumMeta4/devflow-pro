@@ -20,7 +20,7 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04]
+        os: [ubuntu-24.04]  # Transitioning to ubuntu-24.04
     name: Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     steps:
@@ -28,11 +28,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable  # Modern alternative to actions-rs/toolchain
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
           components: rustfmt, clippy
 
       - name: Cache Rust dependencies
@@ -60,26 +57,26 @@ jobs:
 
   coverage:
     name: Code Coverage
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Updated to ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
 
       - name: Run cargo-tarpaulin
-        uses: actions-rs/tarpaulin@v0.1
-        with:
-          version: '0.22.0'
-          args: '--ignore-tests --avoid-cfg-tarpaulin'
-
-      - name: Generate coverage report
         run: |
-          cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out Xml
+          cargo tarpaulin \
+            --verbose \
+            --all-features \
+            --workspace \
+            --timeout 120 \
+            --out Xml \
+            --ignore-tests
 
       - name: Archive coverage results
         uses: actions/upload-artifact@v4
@@ -87,15 +84,15 @@ jobs:
           name: code-coverage-report
           path: cobertura.xml
           retention-days: 7
-          overwrite: true
 
   security-audit:
     name: Security Audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Updated to ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Run cargo-audit
         uses: actions-rs/audit-check@v1
-        continue-on-error: true
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}  # Add GitHub token
