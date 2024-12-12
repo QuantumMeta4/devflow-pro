@@ -5,5 +5,10 @@ edition = "2021"
 authors = ["QuantumMeta4"]
 description = "Advanced codebase analysis tool for project insights and optimization"
 license = "MIT"
+documentation = "https://github.com/QuantumMeta4/devflow-pro/docs"
+homepage = "https://github.com/QuantumMeta4/devflow-pro"
+repository = "https://github.com/QuantumMeta4/devflow-pro"
+keywords = ["analysis", "metrics", "optimization", "code-quality"]
+categories = ["development-tools", "command-line-utilities"]
 
 [dependencies]
