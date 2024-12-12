@@ -1,11 +1,11 @@
 use devflow_pro::ai::types::{AnalysisType, LlamaConfig};
-use devflow_pro::ai::LlamaCoder;
+use devflow_pro::ai::Coder;
 use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // Initialize the LlamaCoder with default config
-    let llama = LlamaCoder::new(LlamaConfig::default())?;
+    // Initialize the Coder with default config
+    let coder = Coder::new(LlamaConfig::default())?;
 
     // Get the source code to analyze
     let code = r#"
@@ -16,12 +16,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     use std::env;
 
     #[derive(Debug, Clone)]
-    pub struct LlamaCoder {
+    pub struct Coder {
         client: Client,
         api_key: String,
     }
 
-    impl LlamaCoder {
+    impl Coder {
         pub async fn new(_config: super::types::LlamaConfig) -> Result<Self, DevFlowError> {
             dotenv().ok();
             let api_key = env::var("TOGETHER_API_KEY")
@@ -106,19 +106,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Code Review
     println!("📝 Code Review:");
-    let review = llama.analyze_code(code, AnalysisType::CodeReview).await?;
+    let review = coder.analyze_code(code, AnalysisType::CodeReview).await?;
     println!("{}\n", review.summary);
 
     // Security Audit
     println!("🔒 Security Audit:");
-    let security = llama
+    let security = coder
         .analyze_code(code, AnalysisType::SecurityAudit)
         .await?;
     println!("{}\n", security.summary);
 
     // Documentation
     println!("📚 Documentation:");
-    let docs = llama
+    let docs = coder
         .analyze_code(code, AnalysisType::Documentation)
         .await?;
     println!("{}\n", docs.summary);

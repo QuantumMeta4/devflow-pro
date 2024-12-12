@@ -1,15 +1,15 @@
 use devflow_pro::ai::types::{AnalysisType, LlamaConfig};
-use devflow_pro::ai::LlamaCoder;
+use devflow_pro::ai::Coder;
 
 #[tokio::main]
 async fn main() {
     // Create a test configuration
     let config = LlamaConfig::default();
 
-    // Initialize the LlamaCoder
-    match LlamaCoder::new(config) {
+    // Initialize the Coder
+    match Coder::new(config) {
         Ok(llama) => {
-            println!("✅ Successfully initialized LlamaCoder");
+            println!("✅ Successfully initialized Coder");
 
             // Test a simple code analysis
             let test_code = "fn main() { println!(\"Hello, World!\"); }";
@@ -21,6 +21,6 @@ async fn main() {
                 Err(e) => println!("❌ API call failed: {e}"),
             }
         }
-        Err(e) => println!("❌ Failed to initialize LlamaCoder: {e}"),
+        Err(e) => println!("❌ Failed to initialize Coder: {e}"),
     }
 }

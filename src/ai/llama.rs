@@ -12,7 +12,7 @@ const RATE_LIMIT_DELAY_MS: u64 = 2000;
 
 /// LLM-based code analysis implementation
 #[derive(Debug, Clone)]
-pub struct LlamaCoder {
+pub struct Coder {
     client: reqwest::Client,
     model: String,
 }
@@ -50,8 +50,8 @@ struct Choice {
     text: String,
 }
 
-impl LlamaCoder {
-    /// Creates a new `LlamaCoder` instance
+impl Coder {
+    /// Creates a new `Coder` instance
     ///
     /// # Errors
     ///

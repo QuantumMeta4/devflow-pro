@@ -1,5 +1,5 @@
 use devflow_pro::ai::types::{AnalysisType, LlamaConfig};
-use devflow_pro::ai::LlamaCoder;
+use devflow_pro::ai::Coder;
 use std::env;
 
 #[tokio::test]
@@ -11,8 +11,8 @@ async fn test_code_optimization() {
         return;
     }
 
-    // Initialize LlamaCoder
-    let coder = LlamaCoder::new(LlamaConfig::default()).expect("Failed to initialize LlamaCoder");
+    // Initialize Coder
+    let coder = Coder::new(LlamaConfig::default()).expect("Failed to initialize Coder");
 
     // Test code to analyze
     let test_code = r"

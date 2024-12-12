@@ -1,7 +1,7 @@
 use clap::Parser;
 use devflow_pro::ai::{
     types::{AnalysisType, LlamaConfig},
-    LlamaCoder,
+    Coder,
 };
 use devflow_pro::{
     analyze_codebase, AppConfig, DevFlowError, IssueSeverity, ProjectInsights, Result,
@@ -133,7 +133,7 @@ async fn run() -> Result<ProjectInsights> {
 
     // Run AI analysis if enabled
     if _args.ai {
-        let llama = LlamaCoder::new(LlamaConfig::default())?;
+        let llama = Coder::new(LlamaConfig::default())?;
 
         // Get the top 5 most complex files for AI analysis
         let mut files: Vec<_> = insights.file_metrics.iter().collect();

@@ -1,11 +1,11 @@
 use devflow_pro::ai::types::{AnalysisType, LlamaConfig};
-use devflow_pro::ai::LlamaCoder;
+use devflow_pro::ai::Coder;
 
 #[tokio::main]
 async fn main() {
     let config = LlamaConfig::default();
-    match LlamaCoder::new(config.clone()) {
-        Ok(llama) => {
+    match Coder::new(config.clone()) {
+        Ok(coder) => {
             // Test complex code sample
             let test_code = r#"
                 fn process_data(data: &[u32]) -> Vec<u32> {
@@ -30,7 +30,7 @@ async fn main() {
 
             for (label, analysis_type) in analyses {
                 println!("\n🔍 Running {label}");
-                match llama.analyze_code(test_code, analysis_type).await {
+                match coder.analyze_code(test_code, analysis_type).await {
                     Ok(result) => {
                         println!("✅ Analysis successful!");
                         println!("Confidence: {}", result.confidence);
@@ -43,6 +43,6 @@ async fn main() {
                 }
             }
         }
-        Err(e) => println!("❌ Failed to initialize LlamaCoder: {e}"),
+        Err(e) => println!("❌ Failed to initialize Coder: {e}"),
     }
 }
