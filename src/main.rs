@@ -3,7 +3,7 @@ use devflow_pro::ai::{
     types::{AnalysisType, LlamaConfig},
     LlamaCoder,
 };
-use devflow_pro::{analyze_codebase, AppConfig, DevFlowError, ProjectInsights, Result};
+use devflow_pro::{analyze_codebase, AppConfig, DevFlowError, IssueSeverity, ProjectInsights, Result};
 use log::{error, info};
 use std::{fs, path::PathBuf, process};
 
@@ -27,6 +27,10 @@ struct Args {
     /// Maximum file size to analyze in bytes
     #[arg(long, default_value = "1048576")] // 1MB
     max_file_size: usize,
+
+    /// Minimum severity level for issues (low, medium, high, critical)
+    #[arg(long, default_value = "low")]
+    min_severity: String,
 
     /// Verbose output
     #[arg(short, long)]
@@ -113,6 +117,13 @@ async fn run() -> Result<ProjectInsights> {
     let config = AppConfig {
         ignored_patterns,
         max_file_size: _args.max_file_size,
+        min_severity: match _args.min_severity.as_str() {
+            "low" => IssueSeverity::Low,
+            "medium" => IssueSeverity::Medium,
+            "high" => IssueSeverity::High,
+            "critical" => IssueSeverity::Critical,
+            _ => IssueSeverity::Low,
+        },
         security_patterns: _args.security_patterns.unwrap_or_default(),
     };
 
@@ -120,7 +131,7 @@ async fn run() -> Result<ProjectInsights> {
 
     // Run AI analysis if enabled
     if _args.ai {
-        let llama = LlamaCoder::new(LlamaConfig::default()).await?;
+        let llama = LlamaCoder::new(LlamaConfig::default())?;
 
         // Get the top 5 most complex files for AI analysis
         let mut files: Vec<_> = insights.file_metrics.iter().collect();

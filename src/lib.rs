@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use ignore::Walk;
-use log::{error, info};
+use log::error;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -56,7 +56,7 @@ pub struct SecurityIssue {
     pub line_number: Option<usize>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub enum IssueSeverity {
     Low,
     Medium,
@@ -110,7 +110,7 @@ pub fn analyze_codebase(path: &Path, config: &AppConfig) -> Result<ProjectInsigh
             match entry {
                 Ok(entry) => {
                     // Only process files
-                    if entry.file_type().map_or(false, |ft| ft.is_file()) {
+                    if entry.file_type().is_some_and(|ft| ft.is_file()) {
                         Some(entry)
                     } else {
                         None
@@ -124,25 +124,58 @@ pub fn analyze_codebase(path: &Path, config: &AppConfig) -> Result<ProjectInsigh
         })
         .collect::<Vec<_>>();
 
-    info!("Found {} files to analyze", walker.len());
+    // Process files in parallel
+    walker.par_iter().try_for_each(|entry| {
+        analyze_file(entry.path(), &insights, config)
+    })?;
 
-    walker
-        .par_iter()
-        .try_for_each(|entry| analyze_file(entry.path(), &insights, config))?;
-
-    let final_insights = Arc::try_unwrap(insights)
-        .map_err(|_| DevFlowError::Thread("Failed to unwrap Arc".into()))?
-        .into_inner()
-        .map_err(|_| DevFlowError::Thread("Failed to acquire lock".into()))?;
-
-    info!(
-        "Completed analysis of {} files",
-        final_insights.file_metrics.len()
-    );
+    // Return the final insights
+    let final_insights = insights
+        .lock()
+        .map_err(|_| DevFlowError::Thread("Failed to acquire lock".into()))?
+        .clone();
 
     Ok(final_insights)
 }
 
+/// Walk through the directory and analyze each file
+/// 
+/// # Errors
+/// 
+/// Returns an error if:
+/// - Cannot read directory entries
+/// - Cannot get file type of an entry
+/// - Cannot analyze a file or subdirectory
+pub fn analyze_directory(
+    dir_path: &Path,
+    insights: &Arc<Mutex<ProjectInsights>>,
+    config: &AppConfig,
+) -> Result<()> {
+    let dir = fs::read_dir(dir_path)?;
+
+    for entry in dir {
+        let entry = entry?;
+        let path = entry.path();
+
+        if entry.file_type()?.is_dir() {
+            analyze_directory(&path, insights, config)?;
+        } else if entry.file_type().is_ok_and(|ft| ft.is_file()) {
+            analyze_file(&path, insights, config)?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Analyze a single file and update project insights
+/// 
+/// # Errors
+/// 
+/// Returns an error if:
+/// - File metadata cannot be read
+/// - File contents cannot be read
+/// - Failed to acquire insights lock
+/// - Failed to analyze code with LLM
 pub fn analyze_file(
     path: &Path,
     insights: &Arc<Mutex<ProjectInsights>>,
@@ -208,16 +241,17 @@ pub fn analyze_file(
     // Update language distribution
     *insights_guard
         .language_distribution
-        .entry(normalize_language_extension(&language))
+        .entry(language)
         .or_insert(0) += 1;
 
     // Store file metrics
     insights_guard
         .file_metrics
-        .insert(path.to_string_lossy().to_string(), metrics);
+        .insert(path.to_string_lossy().into_owned(), metrics);
 
     // Extend security summary
     insights_guard.security_summary.extend(security_issues);
+    drop(insights_guard);
 
     Ok(())
 }
@@ -243,77 +277,29 @@ fn calculate_metrics(path: &Path, content: &str, config: &AppConfig) -> Result<C
         let trimmed = line.trim();
         if trimmed.is_empty() {
             metrics.blank_lines += 1;
-        } else if trimmed.starts_with("//") || trimmed.starts_with("#") || trimmed.starts_with("/*")
-        {
+        } else if trimmed.starts_with("//") || trimmed.starts_with('#') || trimmed.starts_with("/*") {
             metrics.comment_lines += 1;
-        } else {
-            metrics.lines_of_code += 1;
         }
+        metrics.lines_of_code += 1;
     }
 
     // Calculate complexity
-    metrics.complexity = calculate_complexity(&content);
+    #[allow(clippy::cast_precision_loss)]
+    {
+        let branches = content.matches("if ").count()
+            + content.matches("while ").count()
+            + content.matches("for ").count()
+            + content.matches("match ").count();
+        metrics.complexity = (branches as f64).mul_add(0.1, 1.0);
+    }
 
     // Extract dependencies
-    metrics.dependencies = extract_dependencies(&content);
+    metrics.dependencies = extract_dependencies(content);
 
     // Check security issues
     metrics.security_issues = check_security_issues(&lines, config);
 
     Ok(metrics)
-}
-
-fn is_ignored(path: &Path, ignored_patterns: &[String]) -> bool {
-    // Check against ignored patterns first
-    for pattern in ignored_patterns {
-        if path.to_string_lossy().contains(pattern) {
-            return true;
-        }
-    }
-
-    // Ignore binary and non-source files
-    let binary_extensions = &[
-        "png", "jpg", "jpeg", "gif", "ico", "bmp", "webp", // Images
-        "ttf", "otf", "woff", "woff2", // Fonts
-        "mp3", "wav", "ogg", "flac", // Audio
-        "mp4", "avi", "mov", "mkv", // Video
-        "zip", "rar", "7z", "tar", "gz", "bz2", // Archives
-        "pdf", "doc", "docx", "xls", "xlsx", // Documents
-        "exe", "dll", "so", "dylib", // Binaries
-        "lock", "map", // Dependency lock files and source maps
-    ];
-
-    path.extension()
-        .and_then(|e| e.to_str())
-        .map(|ext| binary_extensions.contains(&ext.to_lowercase().as_str()))
-        .unwrap_or(false)
-}
-
-fn normalize_language_extension(ext: &str) -> String {
-    match ext.to_lowercase().as_str() {
-        // JavaScript variants
-        "js" | "mjs" | "cjs" => "js".to_string(),
-        // TypeScript variants
-        "ts" | "tsx" | "mts" => "ts".to_string(),
-        // Markdown variants
-        "md" | "markdown" => "md".to_string(),
-        // Handle special cases
-        "1" => "man".to_string(), // Man page files
-        "bsd" => "config".to_string(),
-        "flow" => "type_def".to_string(),
-        "bnf" => "grammar".to_string(),
-        // Default case
-        _ => ext.to_lowercase(),
-    }
-}
-
-fn calculate_complexity(content: &str) -> f64 {
-    let branches = content.matches("if ").count()
-        + content.matches("while ").count()
-        + content.matches("for ").count()
-        + content.matches("match ").count();
-
-    1.0 + (branches as f64 * 0.1)
 }
 
 fn extract_dependencies(content: &str) -> Vec<String> {
@@ -337,7 +323,7 @@ fn extract_dependencies(content: &str) -> Vec<String> {
             if let Some(dep) = trimmed
                 .split_whitespace()
                 .nth(1)
-                .map(|s| s.split(".").next().unwrap_or(s))
+                .map(|s| s.split('.').next().unwrap_or(s))
             {
                 deps.push(dep.to_string());
             }
@@ -347,13 +333,13 @@ fn extract_dependencies(content: &str) -> Vec<String> {
             if let Some(dep) = if trimmed.contains("from ") {
                 trimmed.split("from ").nth(1).and_then(|s| {
                     s.trim_matches(|c| c == '\'' || c == '"' || c == ';')
-                        .split("/")
+                        .split('/')
                         .next()
                 })
             } else if trimmed.contains("require(") {
                 trimmed.split("require(").nth(1).and_then(|s| {
                     s.trim_matches(|c| c == '\'' || c == '"' || c == ')' || c == ';')
-                        .split("/")
+                        .split('/')
                         .next()
                 })
             } else {
@@ -366,7 +352,7 @@ fn extract_dependencies(content: &str) -> Vec<String> {
         else if trimmed.starts_with("import (") || trimmed.starts_with("import \"") {
             if let Some(dep) = trimmed
                 .trim_matches(|c| c == '"' || c == '(' || c == ')')
-                .split("/")
+                .split('/')
                 .next()
             {
                 deps.push(dep.to_string());
@@ -379,52 +365,222 @@ fn extract_dependencies(content: &str) -> Vec<String> {
     deps
 }
 
-fn check_security_issues(lines: &[&str], config: &AppConfig) -> Vec<SecurityIssue> {
-    let mut issues = Vec::new();
-
-    for (i, line) in lines.iter().enumerate() {
-        for pattern in &config.security_patterns {
-            if line.contains(pattern) {
-                let (severity, category) = categorize_security_issue(pattern);
-                issues.push(SecurityIssue {
-                    severity,
-                    description: format!(
-                        "{}: Found potentially unsafe pattern: {}",
-                        category, pattern
-                    ),
-                    line_number: Some(i + 1),
-                });
+fn is_ignored(path: &Path, ignored_patterns: &[String]) -> bool {
+    // Check against ignored patterns first
+    for pattern in ignored_patterns {
+        if let Ok(pattern) = glob::Pattern::new(pattern) {
+            if pattern.matches_path(path) {
+                return true;
             }
         }
     }
 
-    issues
+    // Check if file is hidden
+    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+        if file_name.starts_with('.') {
+            return true;
+        }
+    }
+
+    // Check if any parent directory is hidden
+    path.ancestors().any(|p| {
+        p.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|name| name.starts_with('.'))
+    })
 }
 
-fn categorize_security_issue(pattern: &str) -> (IssueSeverity, &'static str) {
-    match pattern {
-        p if p.contains("eval") || p.contains("exec") => {
-            (IssueSeverity::Critical, "Command Injection")
-        }
-        p if p.contains("password")
-            || p.contains("secret")
-            || p.contains("token")
-            || p.contains("api") =>
-        {
-            (IssueSeverity::High, "Hardcoded Secrets")
-        }
-        p if p.contains("query") || p.contains("sql") => (IssueSeverity::High, "SQL Injection"),
-        p if p.contains("file") || p.contains("open") || p.contains("read") => {
-            (IssueSeverity::Medium, "Unsafe File Operations")
-        }
-        p if p.contains("unserialize") || p.contains("parse") || p.contains("fromJson") => {
-            (IssueSeverity::Medium, "Unsafe Deserialization")
-        }
-        p if p.contains("innerHTML") || p.contains("write") => {
-            (IssueSeverity::High, "XSS Vulnerability")
-        }
-        _ => (IssueSeverity::Low, "General Security Issue"),
+fn normalize_language_extension(ext: &str) -> String {
+    match ext.to_lowercase().as_str() {
+        // JavaScript variants
+        "js" | "mjs" | "cjs" => "js".to_string(),
+        // TypeScript variants
+        "ts" | "tsx" | "mts" => "ts".to_string(),
+        // Markdown variants
+        "md" | "markdown" => "md".to_string(),
+        // Handle special cases
+        "1" => "man".to_string(), // Man page files
+        "bsd" => "config".to_string(),
+        "flow" => "type_def".to_string(),
+        "bnf" => "grammar".to_string(),
+        // Default case
+        _ => ext.to_lowercase(),
     }
+}
+
+fn check_security_issues(lines: &[&str], config: &AppConfig) -> Vec<SecurityIssue> {
+    let mut issues = Vec::new();
+
+    for (line_num, &line) in lines.iter().enumerate() {
+        let line_num = line_num + 1;
+
+        // Check for hardcoded secrets
+        if (line.contains("password") || line.contains("secret") || line.contains("api_key")) 
+            && (line.contains('=') || line.contains(':')) {
+            issues.push(SecurityIssue {
+                severity: IssueSeverity::High,
+                description: format!(
+                    "Potential hardcoded secret found at line {line_num}: {line}"
+                ),
+                line_number: Some(line_num),
+            });
+        }
+
+        // Check for SQL injection vulnerabilities
+        if (line.contains("SELECT") || line.contains("INSERT") || line.contains("UPDATE"))
+            && (line.contains('\"') || line.contains('\'')) {
+            issues.push(SecurityIssue {
+                severity: IssueSeverity::High,
+                description: format!(
+                    "Potential SQL injection vulnerability at line {line_num}: {line}"
+                ),
+                line_number: Some(line_num),
+            });
+        }
+
+        // Check for unsafe file operations
+        if line.contains("eval(") || line.contains("exec(") {
+            issues.push(SecurityIssue {
+                severity: IssueSeverity::Critical,
+                description: format!(
+                    "Unsafe code execution found at line {line_num}: {line}"
+                ),
+                line_number: Some(line_num),
+            });
+        }
+    }
+
+    // Filter out issues based on configuration
+    issues
+        .into_iter()
+        .filter(|issue| issue.severity >= config.min_severity)
+        .collect()
+}
+
+/// Format project insights into a human-readable report
+/// 
+/// # Panics
+/// 
+/// Panics if file complexity comparison fails due to NaN values
+#[must_use]
+pub fn format_report(insights: &ProjectInsights) -> String {
+    let mut output = String::new();
+
+    // Header
+    output.push_str("📊 DevFlow Pro Analysis Report\n");
+    output.push_str("═══════════════════════════════\n\n");
+
+    // Basic Statistics
+    output.push_str("📈 Overall Statistics\n");
+    output.push_str("──────────────────────\n");
+    output.push_str(&format!(
+        "Files Analyzed: {}\n",
+        insights.file_metrics.len()
+    ));
+    output.push_str(&format!("Total Lines of Code: {}\n", insights.total_lines));
+
+    #[allow(clippy::cast_precision_loss)]
+    let avg_lines = if insights.file_metrics.is_empty() {
+        0.0
+    } else {
+        (insights.total_lines as f64) / (insights.file_metrics.len() as f64)
+    };
+    output.push_str(&format!("Average Lines per File: {avg_lines:.1}\n\n"));
+
+    // Language Distribution
+    output.push_str("🗂  Language Distribution\n");
+    output.push_str("──────────────────────\n");
+    let mut lang_dist: Vec<_> = insights.language_distribution.iter().collect();
+    lang_dist.sort_by(|a, b| b.1.cmp(a.1));
+    for (ext, count) in lang_dist {
+        output.push_str(&format!("  {ext:<8} files: {count:>3}\n"));
+    }
+    output.push('\n');
+
+    // Top Files by Complexity
+    output.push_str("📝 Top Files by Complexity\n");
+    output.push_str("──────────────────────\n");
+    let mut files: Vec<_> = insights.file_metrics.iter().collect();
+    files.sort_by(|a, b| b.1.complexity.partial_cmp(&a.1.complexity).unwrap());
+    for (i, (path, metrics)) in files.iter().take(5).enumerate() {
+        output.push_str(&format!("{}. {}\n", i + 1, path));
+        output.push_str(&format!("   Complexity: {:.1}\n", metrics.complexity));
+        output.push_str(&format!("   Lines: {}\n", metrics.lines_of_code));
+        output.push_str(&format!("   Blank Lines: {}\n", metrics.blank_lines));
+        output.push_str(&format!("   Comments: {}\n", metrics.comment_lines));
+        if !metrics.dependencies.is_empty() {
+            output.push_str(&format!(
+                "   Dependencies: {}\n",
+                metrics.dependencies.join(", ")
+            ));
+        }
+        output.push('\n');
+    }
+
+    // Code Quality Metrics
+    output.push_str("📊 Code Quality Metrics\n");
+    output.push_str("──────────────────────\n");
+    #[allow(clippy::cast_precision_loss)]
+    let comment_ratio = if insights.total_lines > 0 {
+        let total_comments = files.iter().map(|(_, m)| m.comment_lines).sum::<usize>();
+        (total_comments as f64) / (insights.total_lines as f64) * 100.0
+    } else {
+        0.0
+    };
+    output.push_str(&format!("Comment Ratio: {comment_ratio:.1}%\n"));
+
+    #[allow(clippy::cast_precision_loss)]
+    let avg_complexity = files.iter().map(|(_, m)| m.complexity).sum::<f64>() 
+        / (files.len() as f64);
+    output.push_str(&format!("Average Complexity: {avg_complexity:.2}\n\n"));
+
+    // File Size Distribution
+    output.push_str("📦 File Size Distribution\n");
+    output.push_str("──────────────────────\n");
+    let mut size_categories = HashMap::new();
+    for metrics in insights.file_metrics.values() {
+        let category = match metrics.size_bytes {
+            0..=1000 => "Small (0-1KB)",
+            1001..=10_000 => "Medium (1-10KB)",
+            10_001..=100_000 => "Large (10-100KB)",
+            _ => "Very Large (>100KB)",
+        };
+        *size_categories.entry(category).or_insert(0) += 1;
+    }
+    let categories = [
+        "Small (0-1KB)",
+        "Medium (1-10KB)",
+        "Large (10-100KB)",
+        "Very Large (>100KB)",
+    ];
+    for cat in &categories {
+        if let Some(count) = size_categories.get(cat) {
+            output.push_str(&format!("{cat}: {count} files\n"));
+        }
+    }
+    output.push('\n');
+
+    // Recently Modified Files
+    output.push_str("🕒 Recently Modified Files\n");
+    output.push_str("──────────────────────\n");
+    let mut recent_files: Vec<_> = insights.file_metrics.iter().collect();
+    recent_files.sort_by(|a, b| b.1.last_modified.cmp(&a.1.last_modified));
+    for (path, metrics) in recent_files.iter().take(5) {
+        output.push_str(&format!(
+            "- {}\n  Last Modified: {}\n",
+            path,
+            metrics.last_modified.format("%Y-%m-%d %H:%M:%S")
+        ));
+    }
+    output.push('\n');
+
+    // Timestamp
+    output.push_str(&format!(
+        "Analysis completed at: {}\n",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+    ));
+
+    output
 }
 
 #[derive(Debug, Clone)]
@@ -432,6 +588,7 @@ pub struct AppConfig {
     pub max_file_size: usize,
     pub ignored_patterns: Vec<String>,
     pub security_patterns: Vec<String>,
+    pub min_severity: IssueSeverity,
 }
 
 impl Default for AppConfig {
@@ -476,126 +633,7 @@ impl Default for AppConfig {
                 String::from("document\\.write\\s*\\("),
                 String::from("\\$\\s*\\("),
             ],
+            min_severity: IssueSeverity::Low,
         }
     }
-}
-
-pub fn format_report(insights: &ProjectInsights) -> String {
-    let mut output = String::new();
-
-    // Header
-    output.push_str("📊 DevFlow Pro Analysis Report\n");
-    output.push_str("═══════════════════════════════\n\n");
-
-    // Basic Statistics
-    output.push_str("📈 Overall Statistics\n");
-    output.push_str("──────────────────────\n");
-    output.push_str(&format!(
-        "Files Analyzed: {}\n",
-        insights.file_metrics.len()
-    ));
-    output.push_str(&format!("Total Lines of Code: {}\n", insights.total_lines));
-    output.push_str(&format!(
-        "Average Lines per File: {:.1}\n",
-        if insights.file_metrics.len() > 0 {
-            insights.total_lines as f64 / insights.file_metrics.len() as f64
-        } else {
-            0.0
-        }
-    ));
-    output.push_str("\n");
-
-    // Language Distribution
-    output.push_str("🗂  Language Distribution\n");
-    output.push_str("──────────────────────\n");
-    let mut lang_dist: Vec<_> = insights.language_distribution.iter().collect();
-    lang_dist.sort_by(|a, b| b.1.cmp(a.1));
-    for (ext, count) in lang_dist {
-        output.push_str(&format!("  {:<8} files: {:>3}\n", ext, count));
-    }
-    output.push_str("\n");
-
-    // Top Files by Complexity
-    output.push_str("📝 Top Files by Complexity\n");
-    output.push_str("──────────────────────\n");
-    let mut files: Vec<_> = insights.file_metrics.iter().collect();
-    files.sort_by(|a, b| b.1.complexity.partial_cmp(&a.1.complexity).unwrap());
-    for (i, (path, metrics)) in files.iter().take(5).enumerate() {
-        output.push_str(&format!("{}. {}\n", i + 1, path));
-        output.push_str(&format!("   Complexity: {:.1}\n", metrics.complexity));
-        output.push_str(&format!("   Lines: {}\n", metrics.lines_of_code));
-        output.push_str(&format!("   Blank Lines: {}\n", metrics.blank_lines));
-        output.push_str(&format!("   Comments: {}\n", metrics.comment_lines));
-        if !metrics.dependencies.is_empty() {
-            output.push_str(&format!(
-                "   Dependencies: {}\n",
-                metrics.dependencies.join(", ")
-            ));
-        }
-        output.push_str("\n");
-    }
-
-    // Code Quality Metrics
-    output.push_str("📊 Code Quality Metrics\n");
-    output.push_str("──────────────────────\n");
-    let comment_ratio = if insights.total_lines > 0 {
-        files.iter().map(|(_, m)| m.comment_lines).sum::<usize>() as f64
-            / insights.total_lines as f64
-            * 100.0
-    } else {
-        0.0
-    };
-    output.push_str(&format!("Comment Ratio: {:.1}%\n", comment_ratio));
-
-    let avg_complexity = files.iter().map(|(_, m)| m.complexity).sum::<f64>() / files.len() as f64;
-    output.push_str(&format!("Average Complexity: {:.2}\n", avg_complexity));
-    output.push_str("\n");
-
-    // File Size Distribution
-    output.push_str("📦 File Size Distribution\n");
-    output.push_str("──────────────────────\n");
-    let mut size_categories = HashMap::new();
-    for (_, metrics) in &insights.file_metrics {
-        let category = match metrics.size_bytes {
-            0..=1000 => "Small (0-1KB)",
-            1001..=10000 => "Medium (1-10KB)",
-            10001..=100000 => "Large (10-100KB)",
-            _ => "Very Large (>100KB)",
-        };
-        *size_categories.entry(category).or_insert(0) += 1;
-    }
-    let categories = [
-        "Small (0-1KB)",
-        "Medium (1-10KB)",
-        "Large (10-100KB)",
-        "Very Large (>100KB)",
-    ];
-    for cat in categories.iter() {
-        if let Some(count) = size_categories.get(cat) {
-            output.push_str(&format!("{}: {} files\n", cat, count));
-        }
-    }
-    output.push_str("\n");
-
-    // Recently Modified Files
-    output.push_str("🕒 Recently Modified Files\n");
-    output.push_str("──────────────────────\n");
-    let mut recent_files: Vec<_> = insights.file_metrics.iter().collect();
-    recent_files.sort_by(|a, b| b.1.last_modified.cmp(&a.1.last_modified));
-    for (path, metrics) in recent_files.iter().take(5) {
-        output.push_str(&format!(
-            "- {}\n  Last Modified: {}\n",
-            path,
-            metrics.last_modified.format("%Y-%m-%d %H:%M:%S")
-        ));
-    }
-    output.push_str("\n");
-
-    // Timestamp
-    output.push_str(&format!(
-        "Analysis completed at: {}\n",
-        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
-    ));
-
-    output
 }

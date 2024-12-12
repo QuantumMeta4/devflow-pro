@@ -1,10 +1,11 @@
-use devflow_pro::ai::{types::*, LlamaCoder};
+use devflow_pro::ai::types::{AnalysisType, LlamaConfig};
+use devflow_pro::ai::LlamaCoder;
 use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // Initialize the LlamaCoder with default config
-    let llama = LlamaCoder::new(LlamaConfig::default()).await?;
+    let llama = LlamaCoder::new(LlamaConfig::default())?;
 
     // Get the source code to analyze
     let code = r#"

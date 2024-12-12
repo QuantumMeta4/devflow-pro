@@ -1,40 +1,24 @@
-use devflow_pro::ai::llama::LlamaCoder;
 use devflow_pro::ai::types::{AnalysisType, LlamaConfig};
+use devflow_pro::ai::LlamaCoder;
 
 #[tokio::main]
 async fn main() {
     // Create a test configuration
-    let config = LlamaConfig {
-        model_name: "mistralai/Mistral-7B-Instruct-v0.1".to_string(),
-        context_length: 4096,
-        temperature: 0.7,
-        top_p: 0.95,
-        max_tokens: 100,
-        stop_sequences: vec!["```".to_string()],
-    };
+    let config = LlamaConfig::default();
 
     // Initialize the LlamaCoder
-    match LlamaCoder::new(config).await {
+    match LlamaCoder::new(config) {
         Ok(llama) => {
             println!("✅ Successfully initialized LlamaCoder");
 
-            // Test simple code analysis
-            let test_code = "fn hello() { println!(\"Hello, World!\"); }";
-            match llama
-                .analyze_code(test_code, AnalysisType::CodeReview)
-                .await
-            {
-                Ok(result) => {
-                    println!("✅ API call successful!");
-                    println!("Confidence: {}", result.confidence);
-                    println!("\nSuggestions:");
-                    for suggestion in result.suggestions {
-                        println!("- {}", suggestion);
-                    }
-                }
-                Err(e) => println!("❌ API call failed: {}", e),
+            // Test a simple code analysis
+            let test_code = "fn main() { println!(\"Hello, World!\"); }";
+            let result = llama.analyze_code(test_code, AnalysisType::CodeReview).await;
+            match result {
+                Ok(analysis) => println!("Analysis result: {analysis:#?}"),
+                Err(e) => println!("❌ API call failed: {e}"),
             }
         }
-        Err(e) => println!("❌ Failed to initialize LlamaCoder: {}", e),
+        Err(e) => println!("❌ Failed to initialize LlamaCoder: {e}"),
     }
 }

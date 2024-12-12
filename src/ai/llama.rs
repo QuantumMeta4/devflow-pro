@@ -1,6 +1,7 @@
 use crate::DevFlowError;
 use dotenv::dotenv;
-use reqwest::Client;
+use reqwest::ClientBuilder;
+use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use std::{env, time::Duration};
 use tokio::time::sleep;
@@ -9,11 +10,11 @@ const MAX_RETRIES: u32 = 3;
 const RETRY_DELAY_MS: u64 = 1000;
 const RATE_LIMIT_DELAY_MS: u64 = 2000;
 
+/// LLM-based code analysis implementation
 #[derive(Debug, Clone)]
 pub struct LlamaCoder {
-    client: Client,
-    api_key: String,
-    config: super::types::LlamaConfig,
+    client: reqwest::Client,
+    model: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -50,27 +51,50 @@ struct Choice {
 }
 
 impl LlamaCoder {
-    pub async fn new(config: super::types::LlamaConfig) -> Result<Self, DevFlowError> {
+    /// Creates a new `LlamaCoder` instance
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if:
+    /// - `TOGETHER_API_KEY` environment variable is not set or empty
+    /// - Failed to create HTTP client
+    pub fn new(config: super::types::LlamaConfig) -> Result<Self, DevFlowError> {
         dotenv().ok();
         let api_key = match env::var("TOGETHER_API_KEY") {
             Ok(key) if !key.is_empty() => key,
             _ => {
-                return Err(DevFlowError::Config(
-                    "TOGETHER_API_KEY not found or empty in environment. Please set it with: export TOGETHER_API_KEY=your_key".into()
+                return Err(DevFlowError::Ai(
+                    "TOGETHER_API_KEY environment variable not set".into(),
                 ))
             }
         };
 
         Ok(Self {
-            client: Client::builder()
+            client: ClientBuilder::new()
                 .timeout(Duration::from_secs(30))
+                .default_headers({
+                    let mut headers = HeaderMap::new();
+                    headers.insert(
+                        AUTHORIZATION,
+                        HeaderValue::from_str(&format!("Bearer {api_key}"))
+                            .map_err(|e| DevFlowError::Ai(format!("Invalid API key: {e}")))?,
+                    );
+                    headers
+                })
                 .build()
-                .map_err(|e| DevFlowError::Ai(format!("Failed to create HTTP client: {}", e)))?,
-            api_key,
-            config,
+                .map_err(|e| DevFlowError::Ai(format!("Failed to create HTTP client: {e}")))?,
+            model: config.model_name,
         })
     }
 
+    /// Analyzes code using specified analysis type
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if:
+    /// - API request fails
+    /// - Response parsing fails
+    /// - Maximum retries exceeded
     pub async fn analyze_code(
         &self,
         code: &str,
@@ -79,41 +103,20 @@ impl LlamaCoder {
         let prompt = match analysis_type {
             super::types::AnalysisType::CodeReview => {
                 format!(
-                    "You are an expert code reviewer. Analyze this code and provide specific, actionable feedback:\n\n```\n{}\n```\n\nProvide a concise analysis focusing on:\n1. Code quality and maintainability\n2. Performance and efficiency\n3. Best practices and patterns\n4. Potential issues or bugs\n5. Suggestions for improvement\n\nFormat your response in clear sections with bullet points.",
-                    code
+                    "You are an expert code reviewer. Analyze this code and provide specific, actionable feedback:\n\n```\n{code}\n```\n\nProvide a concise summary of the code quality and list specific suggestions for improvement."
                 )
             }
-            super::types::AnalysisType::BugFinding => {
-                format!(
-                    "You are a bug-finding expert. Analyze this code for potential bugs and issues:\n\n```\n{}\n```\n\nList each potential issue with:\n1. Issue description\n2. Severity (Low/Medium/High/Critical)\n3. Impact on code\n4. Suggested fix\n5. Prevention tips\n\nFormat your response in clear sections with bullet points.",
-                    code
-                )
-            }
-            super::types::AnalysisType::SecurityAudit => {
-                format!(
-                    "You are a security expert. Analyze this code for security vulnerabilities:\n\n```\n{}\n```\n\nFor each vulnerability found, provide:\n1. Vulnerability type and CWE ID\n2. Severity (Low/Medium/High/Critical)\n3. Potential impact and attack vectors\n4. Mitigation steps\n5. Best practices to prevent\n\nFormat your response in clear sections with bullet points.",
-                    code
-                )
-            }
-            super::types::AnalysisType::Documentation => {
-                format!(
-                    "You are a technical documentation expert. Generate comprehensive documentation for this code:\n\n```\n{}\n```\n\nInclude:\n1. Overview and purpose\n2. Key components and architecture\n3. Usage examples with code snippets\n4. Dependencies and requirements\n5. Error handling and edge cases\n\nFormat your response in clear sections with markdown formatting.",
-                    code
-                )
-            }
-            super::types::AnalysisType::Optimization => {
-                format!(
-                    "You are a performance optimization expert. Analyze this code for optimization opportunities:\n\n```\n{}\n```\n\nFor each optimization opportunity, provide:\n1. Current performance bottleneck\n2. Impact on system resources\n3. Suggested improvement with code example\n4. Expected performance benefit\n5. Implementation complexity\n\nFormat your response in clear sections with bullet points.",
-                    code
-                )
-            }
+            super::types::AnalysisType::BugFinding => self.analyze_bugs(code),
+            super::types::AnalysisType::SecurityAudit => self.analyze_security(code),
+            super::types::AnalysisType::Documentation => self.analyze_docs(code),
+            super::types::AnalysisType::Optimization => self.analyze_performance(code),
         };
 
         let request = TogetherAIRequest {
-            model: self.config.model_name.clone(),
+            model: self.model.clone(),
             prompt,
-            max_tokens: self.config.max_tokens,
-            temperature: self.config.temperature,
+            max_tokens: 2048,
+            temperature: 0.7,
         };
 
         let mut retries = 0;
@@ -152,7 +155,7 @@ impl LlamaCoder {
                     return Ok(super::types::AnalysisResult {
                         summary,
                         suggestions,
-                        confidence,
+                        confidence: confidence.clamp(0.0, 1.0),
                     });
                 }
                 Err(e) => {
@@ -170,6 +173,26 @@ impl LlamaCoder {
         }
     }
 
+    #[must_use]
+    pub fn analyze_bugs(&self, code: &str) -> String {
+        format!("You are a bug-finding expert. Analyze this code for potential bugs and issues:\n\n```\n{code}\n```\n\nList each potential issue with:\n1. Issue description\n2. Severity (Low/Medium/High/Critical)\n3. Impact on code\n4. Suggested fix\n5. Prevention tips\n\nFormat your response in clear sections with bullet points.")
+    }
+
+    #[must_use]
+    pub fn analyze_security(&self, code: &str) -> String {
+        format!("You are a security expert. Analyze this code for security vulnerabilities:\n\n```\n{code}\n```\n\nFor each vulnerability found, provide:\n1. Vulnerability type and CWE ID\n2. Severity (Low/Medium/High/Critical)\n3. Potential impact and attack vectors\n4. Mitigation steps\n5. Best practices to prevent\n\nFormat your response in clear sections with bullet points.")
+    }
+
+    #[must_use]
+    pub fn analyze_docs(&self, code: &str) -> String {
+        format!("You are a technical documentation expert. Generate comprehensive documentation for this code:\n\n```\n{code}\n```\n\nInclude:\n1. Overview and purpose\n2. Key components and architecture\n3. Usage examples with code snippets\n4. Dependencies and requirements\n5. Error handling and edge cases\n\nFormat your response in clear sections with markdown formatting.")
+    }
+
+    #[must_use]
+    pub fn analyze_performance(&self, code: &str) -> String {
+        format!("You are a performance optimization expert. Analyze this code for optimization opportunities:\n\n```\n{code}\n```\n\nFor each optimization opportunity, provide:\n1. Current performance bottleneck\n2. Impact on system resources\n3. Suggested improvement with code example\n4. Expected performance benefit\n5. Implementation complexity\n\nFormat your response in clear sections with bullet points.")
+    }
+
     async fn make_api_request(
         &self,
         request: &TogetherAIRequest,
@@ -177,7 +200,6 @@ impl LlamaCoder {
         let response = self
             .client
             .post("https://api.together.xyz/inference")
-            .header("Authorization", format!("Bearer {}", self.api_key))
             .json(request)
             .send()
             .await
@@ -261,11 +283,5 @@ fn calculate_confidence(analysis: &str) -> f64 {
         },
     );
 
-    if confidence > 1.0 {
-        1.0
-    } else if confidence < 0.0 {
-        0.0
-    } else {
-        confidence
-    }
+    confidence
 }
