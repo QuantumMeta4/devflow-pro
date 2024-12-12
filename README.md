@@ -57,7 +57,7 @@ devflow-pro -p . --ai
 - **Performance Tracking**: Memory Usage, Processing Speed
 - **Security Scanning**: Vulnerability Detection across multiple categories
 
-### 🤖 AI-Enhanced Capabilities
+### 🤖 AI-Enhanced Capabilities (Open Source codellama integration)
 - Intelligent Code Reviews
 - Security Vulnerability Detection
 - Performance Optimization Suggestions
@@ -107,6 +107,9 @@ devflow-pro ai optimize ./my-project
 # API Configuration
 TOGETHER_API_KEY=your_api_key_here
 
+Get API here: https://www.together.ai
+
+
 # Optional Settings
 DEVFLOW_LOG_LEVEL=info
 DEVFLOW_MAX_THREADS=4
@@ -134,10 +137,9 @@ cargo bench
 
 ## 📊 Project Status
 
-- **Current Release**: v1.0.2 (Stable)
+- **Current Release**: v1.0.3 (Stable)
 - **Maintenance**: Active Development
-- **Community**: 1000+ Developers
-- **Daily Analysis**: 1M+ Lines of Code
+- **Community**: Start-Up
 
 ## 📜 License
 
