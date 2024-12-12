@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #1a1a1a;
+        }
+        .banner {
+            width: 1600px;
+            height: 840px;
+            background: linear-gradient(135deg, #2b2b3d 0%, #1e1e2e 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        .content {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            padding: 2rem;
+        }
+        .title {
+            font-size: 7rem;
+            font-weight: 800;
+            margin: 0;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            letter-spacing: -2px;
+        }
+        .subtitle {
+            font-size: 2.5rem;
+            margin: 2rem 0;
+            color: rgba(255,255,255,0.9);
+            font-weight: 300;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        .features {
+            display: flex;
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+        .feature {
+            background: rgba(255,255,255,0.05);
+            padding: 1rem 2.5rem;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+        .feature-text {
+            font-size: 1.5rem;
+            color: #4ecdc4;
+            margin: 0;
+            font-weight: 500;
+            text-shadow: 0 0 20px rgba(78,205,196,0.5);
+        }
+        .rust-logo {
+            position: absolute;
+            bottom: 2rem;
+            right: 2rem;
+            width: 120px;
+            height: 120px;
+            opacity: 0.15;
+        }
+    </style>
+</head>
+<body>
+    <div class="banner">
+        <div class="content">
+            <h1 class="title">DevFlow Pro</h1>
+            <p class="subtitle">Lightning-Fast Static Code Analysis</p>
+            <div class="features">
+                <div class="feature">
+                    <p class="feature-text">10-50x Faster</p>
+                </div>
+                <div class="feature">
+                    <p class="feature-text">Multi-Language</p>
+                </div>
+                <div class="feature">
+                    <p class="feature-text">Zero Config</p>
+                </div>
+            </div>
+        </div>
+        <svg class="rust-logo" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+            <path fill="#fff" d="M254.3,22.2c-127.9,0-231.7,103.8-231.7,231.7c0,127.9,103.8,231.7,231.7,231.7c127.9,0,231.7-103.8,231.7-231.7 C486,126,382.2,22.2,254.3,22.2z M254.3,447.5c-106.9,0-193.6-86.7-193.6-193.6S147.4,60.3,254.3,60.3S447.9,147,447.9,253.9 S361.2,447.5,254.3,447.5z"/>
+            <path fill="#fff" d="M254.3,131.7c-67.4,0-122.2,54.8-122.2,122.2s54.8,122.2,122.2,122.2s122.2-54.8,122.2-122.2 S321.7,131.7,254.3,131.7z M254.3,338.9c-46.4,0-84.1-37.7-84.1-84.1s37.7-84.1,84.1-84.1s84.1,37.7,84.1,84.1 S300.7,338.9,254.3,338.9z"/>
+        </svg>
+    </div>
+</body>
+</html>
