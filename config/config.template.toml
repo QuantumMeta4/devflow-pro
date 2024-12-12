@@ -1,0 +1,29 @@
+# DevFlow Pro Configuration Template
+# Copy this file to ~/.config/devflow-pro/config.toml and customize
+
+[ai]
+enabled = true
+model_type = "advanced"
+temperature = 0.7
+max_tokens = 2000
+
+# Note: API key should be set via environment variable TOGETHER_API_KEY
+# DO NOT add your API key in this file
+
+[analysis]
+detail_level = "high"
+focus_areas = [
+    "security",
+    "performance",
+    "best-practices"
+]
+
+[output]
+format = "detailed"
+include_examples = true
+suggest_fixes = true
+
+[security]
+scan_dependencies = true
+vulnerability_check = true
+code_pattern_analysis = true

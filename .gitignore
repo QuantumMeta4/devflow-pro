@@ -21,6 +21,13 @@ logs/
 debug/
 coverage/
 
+# Node.js
+node_modules/
+package-lock.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
 # Build outputs
 dist/
 build/
@@ -41,3 +48,7 @@ target/doc/
 # Project specific
 devflow-report.txt
 config/*.local.json
+
+# Large model files
+*.gguf
+models/

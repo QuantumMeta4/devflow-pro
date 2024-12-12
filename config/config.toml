@@ -1,0 +1,36 @@
+[ai]
+enabled = true
+api_provider = "together"
+api_key = "${TOGETHER_API_KEY}"
+model = "codellama/CodeLlama-34b-Instruct"
+
+[ai.features]
+code_review = true
+security_analysis = true
+performance_optimization = true
+documentation_generation = true
+code_quality = true
+natural_language_queries = true
+
+[ai.optimization]
+max_tokens = 4096
+temperature = 0.7
+top_p = 0.95
+frequency_penalty = 0.0
+presence_penalty = 0.0
+
+[ai.analysis]
+depth = "comprehensive"
+scope = ["src/**/*.rs", "tests/**/*.rs"]
+exclude = ["target/*", "node_modules/*"]
+max_file_size = "1MB"
+
+[ai.security]
+scan_dependencies = true
+vulnerability_check = true
+code_pattern_analysis = true
+
+[ai.documentation]
+format = "markdown"
+include_examples = true
+auto_generate = true

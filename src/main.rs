@@ -1,5 +1,6 @@
 use clap::Parser;
 use devflow_pro::{analyze_codebase, AppConfig, DevFlowError, ProjectInsights, Result};
+use devflow_pro::ai::{LlamaCoder, types::{LlamaConfig, AnalysisType}};
 use log::{error, info};
 use std::{fs, path::PathBuf, process};
 
@@ -43,13 +44,28 @@ struct Args {
     /// Security patterns
     #[arg(short, long)]
     security_patterns: Option<Vec<String>>,
+
+    /// Enable AI analysis
+    #[arg(long)]
+    ai: bool,
 }
 
-fn main() {
-    env_logger::init();
+#[tokio::main]
+async fn main() -> Result<()> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(
+        if Args::parse().verbose { "debug" } else { "info" }
+    )).init();
 
-    match run() {
-        Ok(_) => (),
+    info!("Starting analysis of {}", Args::parse().path.display());
+
+    let _args = Args::parse();
+
+    // Run the static analysis
+    match run().await {
+        Ok(insights) => {
+            print_formatted_insights(&insights);
+            Ok(())
+        }
         Err(e) => {
             error!("Error: {}", e);
             process::exit(1);
@@ -57,57 +73,126 @@ fn main() {
     }
 }
 
-fn run() -> Result<ProjectInsights> {
-    let args = Args::parse();
+async fn run() -> Result<ProjectInsights> {
+    let _args = Args::parse();
 
-    if let Some(log_file) = &args.log_file {
+    if let Some(log_file) = &_args.log_file {
         if let Err(e) = fs::File::create(log_file) {
             return Err(DevFlowError::Io(e));
         }
     }
 
-    if args.verbose {
-        info!("Starting analysis of {:?}", args.path);
-    }
+    let target_dir = _args.path.canonicalize()?;
 
-    if !args.path.exists() {
+    if !target_dir.exists() {
         return Err(DevFlowError::InvalidPath(format!(
             "Path does not exist: {:?}",
-            args.path
+            target_dir
         )));
     }
 
+    let mut ignored_patterns = vec![
+        "**/node_modules/**".to_string(),
+        "**/target/**".to_string(),
+        "**/dist/**".to_string(),
+        "**/build/**".to_string(),
+        "**/.git/**".to_string(),
+    ];
+    if let Some(patterns) = _args.ignore {
+        ignored_patterns.extend(patterns);
+    }
+
     let config = AppConfig {
-        ignored_patterns: args.ignore.unwrap_or_default(),
-        max_file_size: args.max_file_size,
-        security_patterns: args.security_patterns.unwrap_or_default(),
+        ignored_patterns,
+        max_file_size: _args.max_file_size,
+        security_patterns: _args.security_patterns.unwrap_or_default(),
     };
 
-    let insights = analyze_codebase(&args.path, &config)?;
+    let insights = analyze_codebase(&target_dir, &config)?;
 
-    match args.output {
+    // Run AI analysis if enabled
+    if _args.ai {
+        let llama = LlamaCoder::new(LlamaConfig::default()).await?;
+        
+        // Get the top 5 most complex files for AI analysis
+        let mut files: Vec<_> = insights.file_metrics.iter().collect();
+        files.sort_by(|a, b| b.1.complexity.partial_cmp(&a.1.complexity).unwrap());
+        
+        for (path, metrics) in files.iter().take(5) {
+            if let Ok(content) = fs::read_to_string(path) {
+                info!("Running AI analysis on: {}", path);
+                
+                // Extract a representative sample of the code
+                let sample = if content.len() > 5000 {
+                    let lines: Vec<&str> = content.lines().collect();
+                    let total_lines = lines.len();
+                    let sample_lines = std::cmp::min(50, total_lines);
+                    let stride = if total_lines > sample_lines {
+                        total_lines / sample_lines
+                    } else {
+                        1
+                    };
+                    
+                    let mut sample = String::new();
+                    for i in (0..total_lines).step_by(stride).take(sample_lines) {
+                        sample.push_str(lines[i]);
+                        sample.push('\n');
+                    }
+                    sample
+                } else {
+                    content.clone()
+                };
+                
+                // Run different types of analysis
+                let review = llama.analyze_code(&sample, AnalysisType::CodeReview).await?;
+                let security = llama.analyze_code(&sample, AnalysisType::SecurityAudit).await?;
+                let optimization = llama.analyze_code(&sample, AnalysisType::Optimization).await?;
+                
+                println!("\n🤖 AI Analysis for {}", path);
+                println!("═══════════════════════════════\n");
+                
+                println!("📁 File Info");
+                println!("──────────");
+                println!("Lines of Code: {}", metrics.lines_of_code);
+                println!("Complexity: {:.1}", metrics.complexity);
+                println!("Comments: {}\n", metrics.comment_lines);
+                
+                println!("📝 Code Review");
+                println!("──────────────");
+                println!("{}\n", review.summary);
+                
+                println!("🔒 Security Analysis");
+                println!("──────────────────");
+                println!("{}\n", security.summary);
+                
+                println!("⚡ Optimization Suggestions");
+                println!("────────────────────────");
+                println!("{}\n", optimization.summary);
+            }
+        }
+    }
+
+    match _args.output {
         Some(path) => {
             let json = serde_json::to_string_pretty(&insights)
                 .map_err(|e| DevFlowError::Serialization(e.to_string()))?;
-            fs::write(&path, json)?;
-            if args.verbose {
+            fs::write(&path, json.as_bytes())?;
+            if _args.verbose {
                 info!("Analysis results written to: {:?}", path);
             }
         }
         None => {
-            if args.format == "json" {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&insights)
-                        .map_err(|e| DevFlowError::Serialization(e.to_string()))?
-                );
+            if _args.format == "json" {
+                let json = serde_json::to_string_pretty(&insights)
+                    .map_err(|e| DevFlowError::Serialization(e.to_string()))?;
+                println!("{}", json);
             } else {
                 print_formatted_insights(&insights);
             }
         }
     }
 
-    if args.verbose {
+    if _args.verbose {
         info!("Analysis completed successfully");
     }
 
@@ -130,16 +215,11 @@ fn print_formatted_insights(insights: &ProjectInsights) {
     );
     println!();
 
-    println!("🗂  Language Distribution");
-    println!("──────────────────────");
-    for (lang, count) in &insights.language_stats {
-        println!("  {lang} files: {count}");
-    }
-    println!();
+    print_language_stats(insights);
 
     println!("📝 Top Files by Complexity");
     println!("──────────────────────");
-    let mut files: Vec<_> = insights.metrics_by_file.iter().collect();
+    let mut files: Vec<_> = insights.file_metrics.iter().collect();
     files.sort_by(|a, b| b.1.complexity.partial_cmp(&a.1.complexity).unwrap());
     for (path, metrics) in files.iter().take(5) {
         println!("  {path} (Complexity: {:.1})", metrics.complexity);
@@ -170,7 +250,17 @@ fn print_formatted_insights(insights: &ProjectInsights) {
     }
 
     println!(
-        "Analysis completed at: {timestamp}\n",
+        "Analysis completed at: {timestamp}",
         timestamp = insights.analysis_timestamp
     );
+}
+
+fn print_language_stats(insights: &ProjectInsights) {
+    println!("\n🗂  Language Distribution");
+    println!("──────────────────────");
+    let mut langs: Vec<_> = insights.language_distribution.iter().collect();
+    langs.sort_by(|a, b| b.1.cmp(a.1));
+    for (lang, count) in langs {
+        println!("  {} files: {}", lang, count);
+    }
 }
