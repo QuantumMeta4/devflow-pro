@@ -53,9 +53,10 @@ fn run() -> Result<()> {
     }
 
     if !args.path.exists() {
-        return Err(DevFlowError::InvalidPath(
-            format!("Path does not exist: {:?}", args.path)
-        ));
+        return Err(DevFlowError::InvalidPath(format!(
+            "Path does not exist: {:?}",
+            args.path
+        )));
     }
 
     let config = AppConfig {
@@ -76,8 +77,11 @@ fn run() -> Result<()> {
         }
         None => {
             if args.format == "json" {
-                println!("{}", serde_json::to_string_pretty(&insights)
-                    .map_err(|e| DevFlowError::Serialization(e.to_string()))?);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&insights)
+                        .map_err(|e| DevFlowError::Serialization(e.to_string()))?
+                );
             } else {
                 print_formatted_insights(&insights);
             }
@@ -114,7 +118,10 @@ fn print_formatted_insights(insights: &ProjectInsights) {
     files.sort_by(|a, b| b.1.complexity.partial_cmp(&a.1.complexity).unwrap());
     for (path, metrics) in files.iter().take(5) {
         println!("  {} (Complexity: {:.1})", path, metrics.complexity);
-        println!("    Lines: {}, Comments: {}", metrics.lines_of_code, metrics.comment_lines);
+        println!(
+            "    Lines: {}, Comments: {}",
+            metrics.lines_of_code, metrics.comment_lines
+        );
         if !metrics.dependencies.is_empty() {
             println!("    Dependencies: {}", metrics.dependencies.join(", "));
         }
