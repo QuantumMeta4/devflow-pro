@@ -1,5 +1,5 @@
 ---
-title: "🚀 DevFlow Pro: A Lightning-Fast Rust-Based Static Code Analyzer"
+title: "🚀 DevFlow Pro: Lightning-Fast Code Analysis in Rust"
 published: true
 description: "Introducing DevFlow Pro - an advanced static code analysis tool that helps you improve code quality and catch issues in milliseconds. Built with Rust for unmatched performance."
 tags: rust, opensource, programming, tooling
