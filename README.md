@@ -1,1 +1,2 @@
-# DevFlow Pro - Advanced Codebase Analysis Tool
+# DevFlow Pro
+Advanced codebase analysis tool for project insights and optimization

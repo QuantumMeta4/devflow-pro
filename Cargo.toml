@@ -1,6 +1,9 @@
 [package]
 name = "devflow-pro"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+authors = ["QuantumMeta4"]
+description = "Advanced codebase analysis tool for project insights and optimization"
+license = "MIT"
 
 [dependencies]
