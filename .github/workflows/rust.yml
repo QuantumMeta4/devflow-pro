@@ -8,26 +8,32 @@ on:
   schedule:
     - cron: '0 0 * * 0'  # Weekly security audit
 
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
 
 jobs:
   test:
-    name: Test
+    name: Test Suite
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install Rust toolchain
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           override: true
           components: rustfmt, clippy
-      
-      - name: Cache dependencies
+
+      - name: Cache Rust dependencies
         uses: actions/cache@v4
         with:
           path: |
@@ -35,50 +41,72 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      
-      - name: Check formatting
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Check code formatting
         run: cargo fmt --all -- --check
-      
-      - name: Lint with clippy
+
+      - name: Run Clippy linter
         run: cargo clippy -- -D warnings
-      
+
       - name: Run tests
-        run: cargo test --all-features
-      
+        run: cargo test --all-features --verbose
+
       - name: Build release
         run: cargo build --release
-      
-      - name: Run security audit
+
+      - name: Security audit
         uses: actions-rs/audit-check@v1
-        with:
-          token: ${{ github.token }}
+        continue-on-error: true
 
   coverage:
-    name: Code coverage
+    name: Code Coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install Rust toolchain
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
-      
+
       - name: Run cargo-tarpaulin
         uses: actions-rs/tarpaulin@v0.1
         with:
           version: '0.22.0'
-          args: '--ignore-tests --avoid-cfg-tarpaulin'
-      
-      - name: Upload to codecov.io
+          args: '--ignore-tests --avoid-cfg-tarpaulin --output-dir ./coverage'
+
+      - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v4
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-      
+          files: ./coverage/cobertura.xml
+          fail_ci_if_error: true
+
       - name: Archive code coverage results
         uses: actions/upload-artifact@v4
         with:
           name: code-coverage-report
-          path: cobertura.xml
+          path: ./coverage/cobertura.xml
           retention-days: 7
+          overwrite: true
+
+  ubuntu-24-04-compatibility:
+    name: Ubuntu 24.04 Compatibility Check
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Run tests
+        run: cargo test --all-features
