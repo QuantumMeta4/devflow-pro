@@ -72,8 +72,6 @@ async fn main() -> Result<()> {
 
     info!("Starting analysis of {}", Args::parse().path.display());
 
-    let _args = Args::parse();
-
     // Run the static analysis
     match run().await {
         Ok(insights) => {
@@ -88,21 +86,18 @@ async fn main() -> Result<()> {
 }
 
 async fn run() -> Result<ProjectInsights> {
-    let _args = Args::parse();
+    let args = Args::parse();
 
-    if let Some(log_file) = &_args.log_file {
+    if let Some(log_file) = &args.log_file {
         if let Err(e) = fs::File::create(log_file) {
             return Err(DevFlowError::Io(e));
         }
     }
 
-    let target_dir = _args.path.canonicalize()?;
+    let target_dir = args.path.canonicalize()?;
 
     if !target_dir.exists() {
-        return Err(DevFlowError::InvalidPath(format!(
-            "Path does not exist: {:?}",
-            target_dir
-        )));
+        return Err(DevFlowError::InvalidPath(format!("Path does not exist: {target_dir:?}")));
     }
 
     let mut ignored_patterns = vec![
@@ -112,27 +107,26 @@ async fn run() -> Result<ProjectInsights> {
         "**/build/**".to_string(),
         "**/.git/**".to_string(),
     ];
-    if let Some(patterns) = _args.ignore {
+    if let Some(patterns) = args.ignore {
         ignored_patterns.extend(patterns);
     }
 
     let config = AppConfig {
         ignored_patterns,
-        max_file_size: _args.max_file_size,
-        min_severity: match _args.min_severity.as_str() {
-            "low" => IssueSeverity::Low,
+        max_file_size: args.max_file_size,
+        min_severity: match args.min_severity.as_str() {
             "medium" => IssueSeverity::Medium,
             "high" => IssueSeverity::High,
             "critical" => IssueSeverity::Critical,
             _ => IssueSeverity::Low,
         },
-        security_patterns: _args.security_patterns.unwrap_or_default(),
+        security_patterns: args.security_patterns.unwrap_or_default(),
     };
 
     let insights = analyze_codebase(&target_dir, &config)?;
 
     // Run AI analysis if enabled
-    if _args.ai {
+    if args.ai {
         let llama = Coder::new(LlamaConfig::default())?;
 
         // Get the top 5 most complex files for AI analysis
@@ -175,7 +169,7 @@ async fn run() -> Result<ProjectInsights> {
                     .analyze_code(&sample, AnalysisType::Optimization)
                     .await?;
 
-                println!("\n🤖 AI Analysis for {}", path);
+                println!("\n🤖 AI Analysis for {path}");
                 println!("═══════════════════════════════\n");
 
                 println!("📁 File Info");
@@ -199,27 +193,27 @@ async fn run() -> Result<ProjectInsights> {
         }
     }
 
-    match _args.output {
+    match args.output {
         Some(path) => {
             let json = serde_json::to_string_pretty(&insights)
                 .map_err(|e| DevFlowError::Serialization(e.to_string()))?;
             fs::write(&path, json.as_bytes())?;
-            if _args.verbose {
+            if args.verbose {
                 info!("Analysis results written to: {:?}", path);
             }
         }
         None => {
-            if _args.format == "json" {
+            if args.format == "json" {
                 let json = serde_json::to_string_pretty(&insights)
                     .map_err(|e| DevFlowError::Serialization(e.to_string()))?;
-                println!("{}", json);
+                println!("{json}");
             } else {
                 print_formatted_insights(&insights);
             }
         }
     }
 
-    if _args.verbose {
+    if args.verbose {
         info!("Analysis completed successfully");
     }
 
@@ -283,11 +277,12 @@ fn print_formatted_insights(insights: &ProjectInsights) {
 }
 
 fn print_language_stats(insights: &ProjectInsights) {
-    println!("\n🗂  Language Distribution");
+    println!("🗂  Language Distribution");
     println!("──────────────────────");
-    let mut langs: Vec<_> = insights.language_distribution.iter().collect();
-    langs.sort_by(|a, b| b.1.cmp(a.1));
-    for (lang, count) in langs {
-        println!("  {} files: {}", lang, count);
+    let mut lang_dist: Vec<_> = insights.language_distribution.iter().collect();
+    lang_dist.sort_by(|a, b| b.1.cmp(a.1));
+    for (lang, count) in lang_dist {
+        println!("  {lang} files: {count}");
     }
+    println!();
 }

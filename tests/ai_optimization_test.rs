@@ -48,7 +48,7 @@ async fn test_code_optimization() {
     println!("Summary:\n{}", analysis.summary);
     println!("\nSuggestions:");
     for suggestion in &analysis.suggestions {
-        println!("- {}", suggestion);
+        println!("- {suggestion}");
     }
     println!("\nConfidence: {:.2}", analysis.confidence);
 }
