@@ -1,0 +1,33 @@
+name: Publish Blog Posts
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'blog/**'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: npm install @sinedied/devto-cli
+        
+      - name: Publish to dev.to
+        env:
+          DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
+        run: |
+          for file in blog/*.md; do
+            if [ -f "$file" ]; then
+              echo "Publishing $file to dev.to..."
+              npx devto-cli publish "$file" --apiKey "$DEVTO_API_KEY" --dryRun false
+            fi
+          done
