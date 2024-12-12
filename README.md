@@ -149,7 +149,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 - 📧 Email: OmegaPhiAI@gmail.com
 - 💬 Discord: [Join our Community](Coming Soon)
-- 🐦 Twitter: [@DevFlowPro](https://twitter.com/meta4ickal)
+- 🐦 Twitter: [@Meta4ickal](https://twitter.com/meta4ickal)
 
 ---
 
