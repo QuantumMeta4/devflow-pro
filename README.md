@@ -8,7 +8,7 @@
 
 ## 🌟 Overview
 
-DevFlow Pro is an advanced, high-performance static code analysis toolkit designed to provide comprehensive insights into software projects across multiple programming languages. Built with Rust's powerful ecosystem, it offers developers and engineering teams a sophisticated tool for assessing code quality, complexity, and security.
+DevFlow Pro is an advanced, high-performance code analysis toolkit designed to provide comprehensive insights into software projects across multiple programming languages. Built with Rust's powerful ecosystem, it offers developers and engineering teams a sophisticated tool for assessing code quality, complexity, and security.
 
 ### 🚀 Why DevFlow Pro?
 
