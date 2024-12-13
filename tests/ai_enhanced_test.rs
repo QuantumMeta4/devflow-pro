@@ -7,7 +7,7 @@ use devflow_pro::ai_enhanced::{
     AIAnalysisResult, AIProvider, OptimizationCategory, OptimizationSuggestion,
     SecurityRecommendation,
 };
-use devflow_pro::analysis::pipeline::AnalysisPipeline;
+use devflow_pro::analysis::Pipeline;
 use devflow_pro::{DevFlowError, IssueSeverity};
 
 #[derive(Default, Debug)]
@@ -60,7 +60,7 @@ async fn test_analysis_pipeline() {
     std::fs::write(&test_file, test_content).unwrap();
 
     // Create and start the pipeline
-    let pipeline = AnalysisPipeline::new();
+    let pipeline = Pipeline::new();
     let (sender, receiver) = channel::unbounded();
     pipeline.start_workers(2, &receiver);
 
