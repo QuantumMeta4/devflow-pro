@@ -6,11 +6,12 @@ use dashmap::DashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use tokio::runtime::{Builder, Runtime};
 
 pub type Result<T> = std::result::Result<T, DevFlowError>;
 
+/// Pipeline for analyzing code files
 #[derive(Debug)]
 pub struct AnalysisPipeline {
     cache: Arc<DashMap<PathBuf, AnalysisResult>>,
@@ -24,6 +25,7 @@ pub struct AnalysisResult {
     pub ai_insights: Option<AIAnalysisResult>,
 }
 
+/// Statistics tracking for the analysis process
 #[derive(Debug, Default)]
 pub struct PipelineStats {
     pub files_processed: AtomicUsize,
@@ -32,7 +34,19 @@ pub struct PipelineStats {
     pub errors: AtomicUsize,
 }
 
+impl Clone for PipelineStats {
+    fn clone(&self) -> Self {
+        Self {
+            files_processed: AtomicUsize::new(self.files_processed.load(Ordering::SeqCst)),
+            total_files: AtomicUsize::new(self.total_files.load(Ordering::SeqCst)),
+            processing_time: self.processing_time,
+            errors: AtomicUsize::new(self.errors.load(Ordering::SeqCst)),
+        }
+    }
+}
+
 impl PipelineStats {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -45,14 +59,12 @@ impl PipelineStats {
         self.errors.fetch_add(1, Ordering::SeqCst);
     }
 
+    #[must_use]
     pub fn get_files_processed(&self) -> usize {
         self.files_processed.load(Ordering::SeqCst)
     }
 
-    pub fn get_total_files(&self) -> usize {
-        self.total_files.load(Ordering::SeqCst)
-    }
-
+    #[must_use]
     pub fn get_errors(&self) -> usize {
         self.errors.load(Ordering::SeqCst)
     }
@@ -70,7 +82,6 @@ impl AnalysisPipeline {
 
     /// Starts workers for processing files
     pub fn start_workers(&self, num_workers: usize, receiver: &Receiver<PathBuf>) {
-        // Start the workers
         for id in 0..num_workers {
             let worker = Worker::new(
                 id,
@@ -99,32 +110,24 @@ impl AnalysisPipeline {
     pub fn get_stats(&self) -> PipelineStats {
         self.stats
             .read()
-            .map(|stats| PipelineStats {
-                files_processed: AtomicUsize::new(stats.get_files_processed()),
-                total_files: AtomicUsize::new(stats.get_total_files()),
-                processing_time: stats.processing_time,
-                errors: AtomicUsize::new(stats.get_errors()),
-            })
-            .unwrap_or_default()
+            .expect("Failed to read stats")
+            .clone()
     }
 }
 
 impl Default for AnalysisPipeline {
     fn default() -> Self {
-        Self {
-            cache: Arc::new(DashMap::new()),
-            stats: Arc::new(RwLock::new(PipelineStats::default())),
-        }
+        Self::new()
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct Worker {
     id: usize,
     cache: Arc<DashMap<PathBuf, AnalysisResult>>,
     stats: Arc<RwLock<PipelineStats>>,
     receiver: Receiver<PathBuf>,
-    semantic_analyzer: Arc<SemanticAnalyzer>,
+    semantic_analyzer: Arc<Mutex<SemanticAnalyzer>>,
 }
 
 impl Worker {
@@ -139,7 +142,7 @@ impl Worker {
             receiver,
             cache,
             stats,
-            semantic_analyzer: Arc::new(SemanticAnalyzer::new()),
+            semantic_analyzer: Arc::new(Mutex::new(SemanticAnalyzer::default())),
         }
     }
 
@@ -193,24 +196,15 @@ impl Worker {
         &self,
         path: &PathBuf,
         runtime: &Runtime,
-    ) -> std::result::Result<AnalysisResult, DevFlowError> {
-        log::debug!("Worker {} starting to process file {:?}", self.id, path);
+    ) -> Result<AnalysisResult> {
+        let content = fs::read_to_string(path)?;
 
-        let content = match fs::read_to_string(path) {
-            Ok(content) => content,
-            Err(e) => {
-                log::error!("Failed to read file {:?}: {}", path, e);
-                return Err(DevFlowError::Io(e));
-            }
-        };
-
-        // Semantic analysis
         let semantic_context = self
             .semantic_analyzer
-            .analyze_file(path, &content)
-            .map_err(DevFlowError::Semantic)?;
+            .lock()
+            .unwrap()
+            .analyze_file(path)?;
 
-        // AI-enhanced analysis
         let ai_insights = runtime.block_on(async {
             let provider = CodeLLamaProvider::new(
                 "default_api_key",
@@ -221,19 +215,16 @@ impl Worker {
             provider.analyze_code(&content).await
         })?;
 
-        // Merge semantic and AI analysis
         let semantic_context = self
             .semantic_analyzer
-            .merge_with_ai_analysis(&semantic_context, &ai_insights);
+            .lock()
+            .unwrap()
+            .merge_with_ai_analysis(semantic_context, &ai_insights);
 
-        // Create analysis result
-        let result = AnalysisResult {
+        Ok(AnalysisResult {
             file_path: path.clone(),
             semantic_context,
             ai_insights: Some(ai_insights),
-        };
-
-        log::debug!("Worker {} successfully processed file {:?}", self.id, path);
-        Ok(result)
+        })
     }
 }
