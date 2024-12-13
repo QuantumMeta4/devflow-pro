@@ -16,6 +16,7 @@ pub type Result<T> = std::result::Result<T, DevFlowError>;
 pub struct Pipeline {
     cache: Arc<DashMap<PathBuf, AnalysisResult>>,
     stats: Arc<RwLock<Stats>>,
+    ai_provider: Arc<Box<dyn AIProvider>>,
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +79,23 @@ impl Pipeline {
         Self {
             cache: Arc::new(DashMap::new()),
             stats: Arc::new(RwLock::new(Stats::default())),
+            ai_provider: Arc::new(Box::new(CodeLLamaProvider::new(
+                &std::env::var("TOGETHER_API_KEY")
+                    .expect("TOGETHER_API_KEY environment variable must be set"),
+                "https://api.together.xyz/v1",
+                "codellama/CodeLlama-34b-Instruct-hf",
+                10,
+            ))),
+        }
+    }
+
+    /// Creates a new pipeline with a custom AI provider
+    #[must_use]
+    pub fn new_with_provider(provider: Box<dyn AIProvider>) -> Self {
+        Self {
+            cache: Arc::new(DashMap::new()),
+            stats: Arc::new(RwLock::new(Stats::default())),
+            ai_provider: Arc::new(provider),
         }
     }
 
@@ -88,6 +106,7 @@ impl Pipeline {
                 id,
                 Arc::clone(&self.cache),
                 Arc::clone(&self.stats),
+                Arc::clone(&self.ai_provider),
                 receiver.clone(),
             );
             worker.start();
@@ -127,6 +146,7 @@ struct Worker {
     id: usize,
     cache: Arc<DashMap<PathBuf, AnalysisResult>>,
     stats: Arc<RwLock<Stats>>,
+    ai_provider: Arc<Box<dyn AIProvider>>,
     receiver: Receiver<PathBuf>,
     semantic_analyzer: Arc<Mutex<Analyzer>>,
 }
@@ -136,6 +156,7 @@ impl Worker {
         id: usize,
         cache: Arc<DashMap<PathBuf, AnalysisResult>>,
         stats: Arc<RwLock<Stats>>,
+        ai_provider: Arc<Box<dyn AIProvider>>,
         receiver: Receiver<PathBuf>,
     ) -> Self {
         Self {
@@ -143,6 +164,7 @@ impl Worker {
             receiver,
             cache,
             stats,
+            ai_provider,
             semantic_analyzer: Arc::new(Mutex::new(Analyzer::default())),
         }
     }
@@ -198,15 +220,8 @@ impl Worker {
 
         let semantic_context = self.semantic_analyzer.lock().unwrap().analyze_file(path)?;
 
-        let ai_insights = runtime.block_on(async {
-            let provider = CodeLLamaProvider::new(
-                "default_api_key",
-                "https://api.together.xyz/v1",
-                "codellama/CodeLlama-34b-Instruct-hf",
-                10,
-            );
-            provider.analyze_code(&content).await
-        })?;
+        let ai_insights =
+            runtime.block_on(async { self.ai_provider.analyze_code(&content).await })?;
 
         let semantic_context = self
             .semantic_analyzer

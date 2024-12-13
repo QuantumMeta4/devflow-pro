@@ -1,0 +1,16 @@
+[ai]
+model = "togethercomputer/CodeLlama-34b-Instruct-hf"
+api_url = "https://api.together.xyz/v1"
+max_tokens = 2000
+
+[analysis]
+max_file_size = 1048576  # 1MB
+min_severity = "low"
+enable_real_time = true
+cache_results = true
+
+[windsurf]
+max_concurrent_analyses = 4
+show_status_bar = true
+show_inline_suggestions = true
+highlight_issues = true

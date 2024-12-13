@@ -45,16 +45,43 @@ This project and everyone participating in it is governed by our [Code of Conduc
 - A modern IDE with Rust support (VS Code + rust-analyzer recommended)
 - Together AI API key for AI-related features
 
-### Local Development
+### Local Development Workflow
 1. Make your changes in a dedicated branch
-2. Run the test suite:
+2. Run the complete test suite in this order:
    ```bash
-   cargo test
+   # Format your code
+   cargo fmt
+   
+   # Run the linter
    cargo clippy -- -D warnings
-   cargo fmt -- --check
+   
+   # Build the project
+   cargo build
+   
+   # Run all tests
+   cargo test
+   
+   # Run DevFlow Pro own analysis
+   'cargo run' -- analyze ./src
    ```
-3. Ensure documentation is updated
-4. Add tests for new features
+3. Ensure all tests pass:
+   - ✅ `cargo fmt` shows no formatting issues
+   - ✅ `cargo clippy` shows no warnings
+   - ✅ `cargo test` passes all tests
+   - ✅ `cargo build` completes successfully
+   - ✅ GitHub Actions CI pipeline is green
+4. Update documentation for any changed features
+5. Add tests for new features
+
+### Pre-Pull Request Checklist
+- [ ] Code is formatted with `cargo fmt`
+- [ ] No warnings from `cargo clippy`
+- [ ] All tests pass with `cargo test`
+- [ ] Project builds with `cargo build`
+- [ ] Documentation is updated
+- [ ] CHANGELOG.md is updated
+- [ ] GitHub Actions CI pipeline is passing
+- [ ] New tests added for new features
 
 ## 🔄 Pull Request Process
 

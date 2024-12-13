@@ -59,8 +59,8 @@ async fn test_analysis_pipeline() {
     "#;
     std::fs::write(&test_file, test_content).unwrap();
 
-    // Create and start the pipeline
-    let pipeline = Pipeline::new();
+    // Create and start the pipeline with MockAIProvider
+    let pipeline = Pipeline::new_with_provider(Box::new(MockAIProvider::default()));
     let (sender, receiver) = channel::unbounded();
     pipeline.start_workers(2, &receiver);
 
@@ -86,6 +86,13 @@ async fn test_analysis_pipeline() {
         1
     );
     assert_eq!(stats.errors.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+    // Verify analysis result
+    let result = pipeline.get_analysis_result(&test_file).unwrap();
+    assert!(result.ai_insights.is_some());
+    let ai_insights = result.ai_insights.unwrap();
+    assert_eq!(ai_insights.code_quality_score, 0.85);
+    assert_eq!(ai_insights.semantic_complexity, 0.65);
 
     // Clean up
     dir.close().unwrap();

@@ -13,6 +13,7 @@ use thiserror::Error;
 pub mod ai;
 pub mod ai_enhanced;
 pub mod analysis;
+pub mod windsurf;
 
 #[derive(Error, Debug)]
 pub enum DevFlowError {

@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 use tokio::sync::Semaphore;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,6 +36,17 @@ pub enum OptimizationCategory {
     Memory,
     Security,
     Maintainability,
+}
+
+impl fmt::Display for OptimizationCategory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OptimizationCategory::Performance => write!(f, "Performance"),
+            OptimizationCategory::Memory => write!(f, "Memory"),
+            OptimizationCategory::Security => write!(f, "Security"),
+            OptimizationCategory::Maintainability => write!(f, "Maintainability"),
+        }
+    }
 }
 
 #[async_trait]
@@ -76,10 +87,11 @@ impl CodeLLamaProvider {
         let request_body = json!({
             "model": self.model,
             "messages": [
-                {"role": "system", "content": "You are a code analysis AI."},
+                {"role": "system", "content": "You are an expert code analysis AI specializing in Rust. Provide detailed, actionable feedback with concrete examples."},
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.2
+            "temperature": 0.2,
+            "max_tokens": 2000
         });
 
         let response = client
@@ -91,6 +103,13 @@ impl CodeLLamaProvider {
             .await
             .map_err(|e| DevFlowError::Network(e.to_string()))?;
 
+        if !response.status().is_success() {
+            return Err(DevFlowError::AI(format!(
+                "API request failed: {}",
+                response.status()
+            )));
+        }
+
         let response_text = response
             .text()
             .await
@@ -98,56 +117,153 @@ impl CodeLLamaProvider {
 
         Ok(response_text)
     }
-}
 
-impl CodeLLamaProvider {
-    /// Parses AI response into analysis result
-    const fn parse_ai_response(_response: &str) -> AIAnalysisResult {
-        AIAnalysisResult {
-            code_quality_score: 0.85,
-            security_recommendations: vec![],
-            optimization_suggestions: vec![],
-            semantic_complexity: 0.65,
+    fn parse_ai_response(&self, response: &str) -> Result<AIAnalysisResult> {
+        #[derive(Deserialize)]
+        struct AIResponse {
+            choices: Vec<Choice>,
         }
+
+        #[derive(Deserialize)]
+        struct Choice {
+            message: Message,
+        }
+
+        #[derive(Deserialize)]
+        struct Message {
+            content: String,
+        }
+
+        let response: AIResponse = serde_json::from_str(response)
+            .map_err(|e| DevFlowError::AI(format!("Failed to parse AI response: {}", e)))?;
+
+        let content = response
+            .choices
+            .first()
+            .ok_or_else(|| DevFlowError::AI("Empty response from AI".to_string()))?
+            .message
+            .content
+            .trim();
+
+        let analysis: serde_json::Value = serde_json::from_str(content)
+            .map_err(|e| DevFlowError::AI(format!("Failed to parse analysis JSON: {}", e)))?;
+
+        Ok(AIAnalysisResult {
+            code_quality_score: analysis["quality_score"].as_f64().unwrap_or(0.0),
+            security_recommendations: analysis["security_issues"]
+                .as_array()
+                .unwrap_or(&Vec::new())
+                .iter()
+                .map(|issue| SecurityRecommendation {
+                    severity: match issue["severity"].as_str().unwrap_or("LOW") {
+                        "HIGH" => crate::IssueSeverity::High,
+                        "MEDIUM" => crate::IssueSeverity::Medium,
+                        _ => crate::IssueSeverity::Low,
+                    },
+                    description: issue["description"].as_str().unwrap_or("").to_string(),
+                    suggested_fix: issue["fix"].as_str().map(String::from),
+                    confidence: issue["confidence"].as_f64().unwrap_or(0.0),
+                })
+                .collect(),
+            optimization_suggestions: analysis["optimizations"]
+                .as_array()
+                .unwrap_or(&Vec::new())
+                .iter()
+                .map(|opt| OptimizationSuggestion {
+                    category: match opt["category"].as_str().unwrap_or("PERFORMANCE") {
+                        "MEMORY" => OptimizationCategory::Memory,
+                        "SECURITY" => OptimizationCategory::Security,
+                        "MAINTAINABILITY" => OptimizationCategory::Maintainability,
+                        _ => OptimizationCategory::Performance,
+                    },
+                    description: opt["description"].as_str().unwrap_or("").to_string(),
+                    impact_score: opt["impact"].as_f64().unwrap_or(0.0),
+                    suggested_implementation: opt["implementation"].as_str().map(String::from),
+                })
+                .collect(),
+            semantic_complexity: analysis["complexity"].as_f64().unwrap_or(0.0),
+        })
     }
 
-    /// Parses fix suggestions
-    const fn parse_fix_suggestions(_response: &str) -> Vec<String> {
-        vec![]
-    }
+    fn parse_fix_suggestions(&self, response: &str) -> Result<Vec<String>> {
+        let response: serde_json::Value = serde_json::from_str(response)
+            .map_err(|e| DevFlowError::AI(format!("Failed to parse fix suggestions: {}", e)))?;
 
-    /// Analyze code using the `CodeLLaMA` provider
-    ///
-    /// # Errors
-    /// Returns an error if the analysis fails
-    async fn analyze_code(&self, content: &str) -> Result<AIAnalysisResult> {
-        let prompt = format!("Analyze the following code:\n\n{content}");
-
-        let response = self.send_ai_request(&prompt).await?;
-
-        Ok(Self::parse_ai_response(&response))
+        Ok(response["suggestions"]
+            .as_array()
+            .unwrap_or(&Vec::new())
+            .iter()
+            .filter_map(|s| s.as_str())
+            .map(String::from)
+            .collect())
     }
 }
 
 #[async_trait]
 impl AIProvider for CodeLLamaProvider {
-    /// Analyze code using the `CodeLLaMA` provider
-    ///
-    /// # Errors
-    /// Returns an error if the analysis fails
     async fn analyze_code(&self, content: &str) -> Result<AIAnalysisResult> {
-        self.analyze_code(content).await
-    }
+        let prompt = format!(
+            r#"Analyze the following Rust code and provide a detailed analysis in JSON format. Include:
+1. A quality score from 0-100
+2. A semantic complexity score
+3. Security issues with severity (HIGH/MEDIUM/LOW), description, suggested fix, and confidence score
+4. Optimization suggestions with category (PERFORMANCE/MEMORY/SECURITY/MAINTAINABILITY), description, impact score, and suggested implementation
 
-    /// Suggest fixes for security issues
-    ///
-    /// # Errors
-    /// Returns an error if the analysis fails
-    async fn suggest_fixes(&self, issues: &[crate::SecurityIssue]) -> Result<Vec<String>> {
-        let prompt = format!("Suggest fixes for the following security issues:\n\n{issues:?}");
+IMPORTANT: Return ONLY a valid JSON object with NO additional text or notes. The response must be EXACTLY in this format:
+{{
+    "quality_score": float,
+    "complexity": float,
+    "security_issues": [
+        {{
+            "severity": "HIGH"|"MEDIUM"|"LOW",
+            "description": string,
+            "fix": string,
+            "confidence": float
+        }}
+    ],
+    "optimizations": [
+        {{
+            "category": "PERFORMANCE"|"MEMORY"|"SECURITY"|"MAINTAINABILITY",
+            "description": string,
+            "impact": float,
+            "implementation": string
+        }}
+    ]
+}}
+
+Here's the code to analyze:
+
+{}
+"#,
+            content
+        );
 
         let response = self.send_ai_request(&prompt).await?;
+        log::debug!("AI Response: {}", response);
+        self.parse_ai_response(&response)
+    }
 
-        Ok(Self::parse_fix_suggestions(&response))
+    async fn suggest_fixes(&self, issues: &[crate::SecurityIssue]) -> Result<Vec<String>> {
+        if issues.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let issues_json = serde_json::to_string(issues)
+            .map_err(|e| DevFlowError::AI(format!("Failed to serialize issues: {}", e)))?;
+
+        let prompt = format!(
+            r#"Given these security issues in JSON format:
+{issues_json}
+
+Provide specific code fixes in JSON format:
+{{
+    "suggestions": [
+        "<detailed fix suggestion with code example>"
+    ]
+}}"#
+        );
+
+        let response = self.send_ai_request(&prompt).await?;
+        self.parse_fix_suggestions(&response)
     }
 }
