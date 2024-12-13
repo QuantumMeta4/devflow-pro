@@ -59,8 +59,9 @@ impl Coder {
     /// - `TOGETHER_API_KEY` environment variable is not set or empty
     /// - Failed to create HTTP client
     pub fn new(config: super::types::LlamaConfig) -> Result<Self, DevFlowError> {
-        let api_key = env::var("TOGETHER_API_KEY")
-            .map_err(|_| DevFlowError::AI("TOGETHER_API_KEY environment variable not set".into()))?;
+        let api_key = env::var("TOGETHER_API_KEY").map_err(|_| {
+            DevFlowError::AI("TOGETHER_API_KEY environment variable not set".into())
+        })?;
 
         let client = ClientBuilder::new()
             .timeout(Duration::from_secs(30))

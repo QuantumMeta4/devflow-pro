@@ -1,9 +1,9 @@
 use crate::{DevFlowError, Result};
 use async_trait::async_trait;
+use reqwest;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
-use reqwest;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIAnalysisResult {
@@ -60,11 +60,14 @@ impl CodeLLamaProvider {
     }
 
     async fn make_llm_request(&self, prompt: &str) -> Result<String> {
-        let _permit = self.semaphore.acquire().await.map_err(|e| {
-            DevFlowError::AI(format!("Failed to acquire semaphore: {}", e))
-        })?;
+        let _permit = self
+            .semaphore
+            .acquire()
+            .await
+            .map_err(|e| DevFlowError::AI(format!("Failed to acquire semaphore: {}", e)))?;
 
-        let response = self.client
+        let response = self
+            .client
             .post("https://api.together.xyz/v1/completions")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&serde_json::json!({

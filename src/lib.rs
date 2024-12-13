@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use globset::{Glob, GlobSetBuilder};
 use ignore::Walk;
 use log::error;
 use rayon::prelude::*;
@@ -8,23 +9,22 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
-use globset::{Glob, GlobSetBuilder};
 
-pub mod analysis;
-pub mod ai_enhanced;
 pub mod ai;
+pub mod ai_enhanced;
+pub mod analysis;
 
 #[derive(Debug, Error)]
 pub enum DevFlowError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     #[error("Thread error: {0}")]
     Thread(String),
-    
+
     #[error("Semantic error: {0}")]
     Semantic(#[from] analysis::semantic::SemanticError),
-    
+
     #[error("AI error: {0}")]
     AI(String),
 
@@ -374,13 +374,13 @@ fn extract_dependencies(content: &str) -> Vec<String> {
 
 fn is_ignored(path: &Path, ignored_patterns: &[String]) -> bool {
     let mut builder = GlobSetBuilder::new();
-    
+
     for pattern in ignored_patterns {
         if let Ok(glob) = Glob::new(pattern) {
             builder.add(glob);
         }
     }
-    
+
     if let Ok(set) = builder.build() {
         set.is_match(path)
     } else {

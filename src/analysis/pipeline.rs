@@ -1,14 +1,14 @@
-use crate::analysis::semantic::{SemanticAnalyzer, SemanticContext};
 use crate::ai_enhanced::{AIAnalysisResult, AIProvider};
+use crate::analysis::semantic::{SemanticAnalyzer, SemanticContext};
 use crate::DevFlowError;
+use crossbeam::channel::Receiver;
 use dashmap::DashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
-use std::time::Instant;
 use std::thread;
-use crossbeam::channel::Receiver;
+use std::time::Instant;
 use tokio::runtime::Runtime;
 
 pub type Result<T> = std::result::Result<T, DevFlowError>;
@@ -36,10 +36,7 @@ pub struct PipelineStats {
 }
 
 impl AnalysisPipeline {
-    pub fn new(
-        semantic_analyzer: Arc<SemanticAnalyzer>,
-        ai_provider: Arc<dyn AIProvider>,
-    ) -> Self {
+    pub fn new(semantic_analyzer: Arc<SemanticAnalyzer>, ai_provider: Arc<dyn AIProvider>) -> Self {
         Self {
             semantic_analyzer,
             ai_provider,
@@ -124,7 +121,7 @@ impl Worker {
 
         while let Ok(path) = self.receiver.recv() {
             let _start = Instant::now();
-            
+
             match self.process_file(&path, &runtime) {
                 Ok(result) => {
                     self.cache.insert(path.clone(), result);
@@ -137,11 +134,14 @@ impl Worker {
                         stats.files_processed += 1;
                     }
                     // Insert a failed result so we don't hang waiting
-                    self.cache.insert(path.clone(), AnalysisResult {
-                        file_path: path.clone(),
-                        semantic_context: Default::default(),
-                        ai_insights: None,
-                    });
+                    self.cache.insert(
+                        path.clone(),
+                        AnalysisResult {
+                            file_path: path.clone(),
+                            semantic_context: Default::default(),
+                            ai_insights: None,
+                        },
+                    );
                 }
             }
         }
@@ -149,7 +149,7 @@ impl Worker {
 
     fn process_file(&self, path: &PathBuf, runtime: &Runtime) -> Result<AnalysisResult> {
         log::debug!("Worker {} starting to process file {:?}", self.id, path);
-        
+
         let content = match fs::read_to_string(path) {
             Ok(c) => c,
             Err(e) => {
@@ -157,7 +157,7 @@ impl Worker {
                 return Err(DevFlowError::Io(e));
             }
         };
-        
+
         // Perform semantic analysis
         log::debug!("Worker {} performing semantic analysis", self.id);
         let semantic_context = match self.semantic_analyzer.analyze_file(path, &content) {
@@ -167,7 +167,7 @@ impl Worker {
                 return Err(DevFlowError::Semantic(e));
             }
         };
-        
+
         // Perform AI analysis
         log::debug!("Worker {} performing AI analysis", self.id);
         let ai_insights = match runtime.block_on(self.ai_provider.analyze_code(&content)) {

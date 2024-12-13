@@ -69,13 +69,13 @@ impl SemanticAnalyzer {
     }
 
     pub fn analyze_file(&self, path: &PathBuf, content: &str) -> Result<SemanticContext> {
-        let extension = path.extension()
-            .and_then(|e| e.to_str())
-            .ok_or_else(|| SemanticError::InvalidPath("Failed to get file extension".to_string()))?;
+        let extension = path.extension().and_then(|e| e.to_str()).ok_or_else(|| {
+            SemanticError::InvalidPath("Failed to get file extension".to_string())
+        })?;
 
         match extension {
             "rs" => self.analyze_rust(content),
-            _ => Err(SemanticError::UnsupportedLanguage(extension.to_string()))
+            _ => Err(SemanticError::UnsupportedLanguage(extension.to_string())),
         }
     }
 
@@ -95,28 +95,34 @@ impl SemanticAnalyzer {
         })
     }
 
-    pub fn merge_with_ai_analysis(&self, semantic: &SemanticContext, ai: &AIAnalysisResult) -> SemanticContext {
+    pub fn merge_with_ai_analysis(
+        &self,
+        semantic: &SemanticContext,
+        ai: &AIAnalysisResult,
+    ) -> SemanticContext {
         let mut merged = semantic.clone();
-        
+
         // Enhance function complexity with AI insights
         for function in &mut merged.functions {
-            if let Some(_suggestion) = ai.optimization_suggestions.iter()
-                .find(|s| s.description.contains(&function.name)) {
+            if let Some(_suggestion) = ai
+                .optimization_suggestions
+                .iter()
+                .find(|s| s.description.contains(&function.name))
+            {
                 function.complexity += 1;
             }
         }
 
         // Add any additional dependencies identified by AI
-        merged.dependencies.extend(
-            ai.security_recommendations.iter()
-                .filter_map(|r| {
-                    if r.description.contains("dependency") {
-                        Some(r.description.clone())
-                    } else {
-                        None
-                    }
-                })
-        );
+        merged
+            .dependencies
+            .extend(ai.security_recommendations.iter().filter_map(|r| {
+                if r.description.contains("dependency") {
+                    Some(r.description.clone())
+                } else {
+                    None
+                }
+            }));
 
         merged
     }
