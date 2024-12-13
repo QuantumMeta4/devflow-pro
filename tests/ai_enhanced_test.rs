@@ -73,7 +73,7 @@ async fn test_analysis_pipeline() {
     let start = std::time::Instant::now();
 
     while !pipeline.is_file_processed(&test_file) {
-        assert!(!(start.elapsed() > timeout), "Test timed out");
+        assert!(start.elapsed() <= timeout, "Test timed out");
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
