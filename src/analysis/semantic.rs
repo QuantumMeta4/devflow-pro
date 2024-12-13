@@ -45,7 +45,7 @@ impl SemanticAnalyzer {
     }
 
     /// Analyzes a Rust source file and returns semantic context
-    /// 
+    ///
     /// # Errors
     /// Returns an error if:
     /// - The file cannot be read
@@ -120,7 +120,10 @@ impl SemanticAnalyzer {
                 complexity
             }
             Expr::Block(expr_block) => Self::calculate_block_complexity(&expr_block.block),
-            Expr::Return(expr_return) => expr_return.expr.as_ref().map_or(0, |expr| Self::calculate_complexity(expr)),
+            Expr::Return(expr_return) => expr_return
+                .expr
+                .as_ref()
+                .map_or(0, |expr| Self::calculate_complexity(expr)),
             _ => 0,
         }
     }
