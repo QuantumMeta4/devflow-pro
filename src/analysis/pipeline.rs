@@ -108,10 +108,7 @@ impl AnalysisPipeline {
     /// Retrieves pipeline statistics
     #[must_use]
     pub fn get_stats(&self) -> PipelineStats {
-        self.stats
-            .read()
-            .expect("Failed to read stats")
-            .clone()
+        self.stats.read().expect("Failed to read stats").clone()
     }
 }
 
@@ -192,18 +189,10 @@ impl Worker {
         });
     }
 
-    fn process_file(
-        &self,
-        path: &PathBuf,
-        runtime: &Runtime,
-    ) -> Result<AnalysisResult> {
+    fn process_file(&self, path: &PathBuf, runtime: &Runtime) -> Result<AnalysisResult> {
         let content = fs::read_to_string(path)?;
 
-        let semantic_context = self
-            .semantic_analyzer
-            .lock()
-            .unwrap()
-            .analyze_file(path)?;
+        let semantic_context = self.semantic_analyzer.lock().unwrap().analyze_file(path)?;
 
         let ai_insights = runtime.block_on(async {
             let provider = CodeLLamaProvider::new(

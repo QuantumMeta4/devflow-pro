@@ -50,12 +50,13 @@ impl SemanticAnalyzer {
                 }
                 Item::Fn(item_fn) => {
                     context.functions.push(item_fn.sig.ident.to_string());
-                    context.complexity += self.calculate_block_complexity(&item_fn.block);
+                    context.complexity += Self::calculate_block_complexity(&item_fn.block);
                 }
                 Item::Impl(item_impl) => {
                     for impl_item in item_impl.items {
                         if let ImplItem::Fn(impl_fn) = impl_item {
                             context.functions.push(impl_fn.sig.ident.to_string());
+                            context.complexity += Self::calculate_block_complexity(&impl_fn.block);
                         }
                     }
                 }
@@ -67,7 +68,7 @@ impl SemanticAnalyzer {
         Ok(context)
     }
 
-    fn calculate_block_complexity(&self, block: &Block) -> usize {
+    fn calculate_block_complexity(block: &Block) -> usize {
         let mut complexity = 0;
         for stmt in &block.stmts {
             if let syn::Stmt::Expr(expr, _) = stmt {
@@ -79,18 +80,36 @@ impl SemanticAnalyzer {
 
     fn calculate_complexity(expr: &Expr) -> usize {
         match expr {
-            Expr::If(_) => 1,
-            Expr::While(_) => 1,
-            Expr::ForLoop(_) => 1,
-            Expr::Match(expr_match) => expr_match.arms.len(),
-            Expr::Block(expr_block) => {
-                let mut complexity = 0;
-                for stmt in &expr_block.block.stmts {
-                    if let syn::Stmt::Expr(inner_expr, _) = stmt {
-                        complexity += Self::calculate_complexity(inner_expr);
-                    }
+            Expr::If(expr_if) => {
+                let mut complexity = 1; // Base complexity for if
+                complexity += Self::calculate_complexity(&expr_if.cond);
+                complexity += Self::calculate_block_complexity(&expr_if.then_branch);
+                if let Some((_, else_branch)) = &expr_if.else_branch {
+                    complexity += Self::calculate_complexity(else_branch);
                 }
                 complexity
+            }
+            Expr::While(expr_while) => {
+                1 + Self::calculate_complexity(&expr_while.cond) + 
+                   Self::calculate_block_complexity(&expr_while.body)
+            }
+            Expr::ForLoop(expr_for) => {
+                1 + Self::calculate_block_complexity(&expr_for.body)
+            }
+            Expr::Match(expr_match) => {
+                let mut complexity = expr_match.arms.len();
+                for arm in &expr_match.arms {
+                    complexity += Self::calculate_complexity(&arm.body);
+                }
+                complexity
+            }
+            Expr::Block(expr_block) => Self::calculate_block_complexity(&expr_block.block),
+            Expr::Return(expr_return) => {
+                if let Some(expr) = &expr_return.expr {
+                    Self::calculate_complexity(expr)
+                } else {
+                    0
+                }
             }
             _ => 0,
         }
@@ -100,23 +119,20 @@ impl SemanticAnalyzer {
         match tree {
             UseTree::Path(use_path) => {
                 imports.push(use_path.ident.to_string());
-                Self::process_use_tree(&use_path.tree, imports);
+                SemanticAnalyzer::process_use_tree(&use_path.tree, imports);
             }
             UseTree::Name(use_name) => {
                 imports.push(use_name.ident.to_string());
             }
             UseTree::Rename(use_rename) => {
-                imports.push(format!("{} as {}", 
-                    &use_rename.ident,
-                    &use_rename.rename
-                ));
+                imports.push(format!("{} as {}", &use_rename.ident, &use_rename.rename));
             }
             UseTree::Glob(_) => {
                 imports.push("*".to_string());
             }
             UseTree::Group(use_group) => {
                 for tree in &use_group.items {
-                    Self::process_use_tree(tree, imports);
+                    SemanticAnalyzer::process_use_tree(tree, imports);
                 }
             }
         }
