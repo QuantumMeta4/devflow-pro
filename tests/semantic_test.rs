@@ -1,4 +1,4 @@
-use devflow_pro::analysis::{SemanticAnalyzer, SemanticContext};
+use devflow_pro::analysis::SemanticAnalyzer;
 use std::path::PathBuf;
 
 #[test]

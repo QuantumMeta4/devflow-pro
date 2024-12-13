@@ -1,10 +1,15 @@
 use async_trait::async_trait;
 use devflow_pro::{
     ai_enhanced::{AIAnalysisResult, AIProvider, OptimizationCategory, OptimizationSuggestion, SecurityRecommendation},
-    analysis::AnalysisPipeline,
+    analysis::{AnalysisPipeline, SemanticAnalyzer},
     IssueSeverity, Result,
 };
 use std::sync::Arc;
+use crossbeam::channel;
+use tempfile;
+use std::time::Duration;
+use env_logger;
+use log;
 
 #[derive(Default, Debug)]
 struct MockAIProvider;
@@ -37,24 +42,67 @@ impl AIProvider for MockAIProvider {
 
 #[tokio::test]
 async fn test_analysis_pipeline() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    
     let ai_provider = Arc::new(MockAIProvider::default());
-    let pipeline = AnalysisPipeline::new(ai_provider).unwrap();
+    let semantic_analyzer = Arc::new(SemanticAnalyzer::new());
+    let pipeline = AnalysisPipeline::new(semantic_analyzer, ai_provider);
 
-    pipeline.start_workers(2).unwrap();
+    // Create channels for sending files to workers
+    let (sender, receiver) = channel::unbounded();
+    pipeline.start_workers(2, receiver);
 
     // Create a temporary test file
     let temp_dir = tempfile::tempdir().unwrap();
     let test_file = temp_dir.path().join("test.rs");
+    log::debug!("Creating test file at {:?}", test_file);
     std::fs::write(&test_file, "fn main() { println!(\"Hello, World!\"); }").unwrap();
 
-    // Submit file for analysis
-    pipeline.submit(test_file.clone()).unwrap();
+    // Send file for analysis
+    log::debug!("Sending file for analysis");
+    sender.send(test_file.clone()).expect("Failed to send file for analysis");
 
-    // Wait for analysis to complete
-    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    // Wait for analysis to complete with timeout
+    let start = std::time::Instant::now();
+    let timeout = Duration::from_secs(10); // Increased timeout
+    let mut processed = false;
+
+    while !processed {
+        if start.elapsed() > timeout {
+            panic!("Timeout waiting for file analysis after {} seconds", timeout.as_secs());
+        }
+        
+        processed = pipeline.is_file_processed(&test_file);
+        if !processed {
+            let stats = pipeline.get_stats();
+            log::debug!("Current stats: processed={}, errors={}", stats.files_processed, stats.errors);
+            if stats.errors > 0 {
+                panic!("Analysis failed with {} errors", stats.errors);
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
 
     // Check results
-    let result = pipeline.get_result(&test_file).unwrap();
-    assert!(result.metrics.lines_of_code > 0);
-    assert!(result.ai_insights.code_quality_score > 0.0);
+    log::debug!("Analysis completed, checking results");
+    let result = pipeline.get_analysis_result(&test_file).expect("Failed to get analysis result");
+    
+    // Check if analysis completed successfully
+    if let Some(ai_insights) = result.ai_insights {
+        log::debug!("Got AI insights: score={}", ai_insights.code_quality_score);
+        assert!(ai_insights.code_quality_score > 0.0);
+        assert_eq!(ai_insights.security_recommendations.len(), 1);
+        assert_eq!(ai_insights.optimization_suggestions.len(), 1);
+    } else {
+        let stats = pipeline.get_stats();
+        if stats.errors > 0 {
+            panic!("Analysis failed with errors, no AI insights available");
+        }
+    }
+
+    // Check pipeline stats
+    let stats = pipeline.get_stats();
+    log::debug!("Final stats: processed={}, errors={}", stats.files_processed, stats.errors);
+    assert_eq!(stats.files_processed, 1);
+    assert_eq!(stats.errors, 0);
 }

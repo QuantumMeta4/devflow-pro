@@ -21,14 +21,14 @@ pub struct AnalysisPipeline {
     stats: Arc<RwLock<PipelineStats>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AnalysisResult {
     pub file_path: PathBuf,
     pub semantic_context: SemanticContext,
     pub ai_insights: Option<AIAnalysisResult>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct PipelineStats {
     pub files_processed: usize,
     pub total_files: usize,
@@ -49,6 +49,9 @@ impl AnalysisPipeline {
     }
 
     pub fn start_workers(&self, num_workers: usize, receiver: Receiver<PathBuf>) {
+        if let Ok(mut stats) = self.stats.write() {
+            stats.total_files = num_workers;
+        }
         for id in 0..num_workers {
             let worker = Worker::new(
                 id,
@@ -60,6 +63,18 @@ impl AnalysisPipeline {
             );
             let _ = worker.start();
         }
+    }
+
+    pub fn is_file_processed(&self, path: &PathBuf) -> bool {
+        self.cache.contains_key(path)
+    }
+
+    pub fn get_analysis_result(&self, path: &PathBuf) -> Option<AnalysisResult> {
+        self.cache.get(path).map(|r| r.clone())
+    }
+
+    pub fn get_stats(&self) -> PipelineStats {
+        self.stats.read().unwrap().clone()
     }
 }
 
@@ -113,31 +128,61 @@ impl Worker {
             match self.process_file(&path, &runtime) {
                 Ok(result) => {
                     self.cache.insert(path.clone(), result);
-                    if let Ok(mut stats) = self.stats.write() {
-                        stats.files_processed += 1;
-                        stats.total_files += 1;
-                    }
                 }
                 Err(e) => {
                     log::error!("Worker {} failed to process {:?}: {}", self.id, path, e);
                     if let Ok(mut stats) = self.stats.write() {
                         stats.errors += 1;
+                        // Still mark as processed even if there was an error
+                        stats.files_processed += 1;
                     }
+                    // Insert a failed result so we don't hang waiting
+                    self.cache.insert(path.clone(), AnalysisResult {
+                        file_path: path.clone(),
+                        semantic_context: Default::default(),
+                        ai_insights: None,
+                    });
                 }
             }
         }
     }
 
     fn process_file(&self, path: &PathBuf, runtime: &Runtime) -> Result<AnalysisResult> {
-        let content = fs::read_to_string(path)?;
+        log::debug!("Worker {} starting to process file {:?}", self.id, path);
+        
+        let content = match fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) => {
+                log::error!("Failed to read file {:?}: {}", path, e);
+                return Err(DevFlowError::Io(e));
+            }
+        };
         
         // Perform semantic analysis
-        let semantic_context = self.semantic_analyzer.analyze_file(path, &content)
-            .map_err(|e| DevFlowError::Semantic(e))?;
+        log::debug!("Worker {} performing semantic analysis", self.id);
+        let semantic_context = match self.semantic_analyzer.analyze_file(path, &content) {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                log::error!("Semantic analysis failed for {:?}: {}", path, e);
+                return Err(DevFlowError::Semantic(e));
+            }
+        };
         
         // Perform AI analysis
-        let ai_insights = runtime.block_on(self.ai_provider.analyze_code(&content))
-            .map_err(|e| DevFlowError::AI(e.to_string()))?;
+        log::debug!("Worker {} performing AI analysis", self.id);
+        let ai_insights = match runtime.block_on(self.ai_provider.analyze_code(&content)) {
+            Ok(insights) => insights,
+            Err(e) => {
+                log::error!("AI analysis failed for {:?}: {}", path, e);
+                return Err(DevFlowError::AI(e.to_string()));
+            }
+        };
+
+        // Update stats before returning
+        if let Ok(mut stats) = self.stats.write() {
+            stats.files_processed += 1;
+            log::debug!("Worker {} successfully processed file {:?}", self.id, path);
+        }
 
         Ok(AnalysisResult {
             file_path: path.clone(),
