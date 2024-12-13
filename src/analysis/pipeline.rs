@@ -5,9 +5,9 @@ use crossbeam::channel::Receiver;
 use dashmap::DashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use tokio::runtime::{Runtime, Builder};
+use std::sync::{Arc, RwLock};
+use tokio::runtime::{Builder, Runtime};
 
 pub type Result<T> = std::result::Result<T, DevFlowError>;
 
@@ -152,7 +152,11 @@ impl Worker {
 
             while let Ok(path) = self.receiver.recv() {
                 if self.cache.contains_key(&path) {
-                    log::debug!("Worker {} skipping already processed file {:?}", self.id, path);
+                    log::debug!(
+                        "Worker {} skipping already processed file {:?}",
+                        self.id,
+                        path
+                    );
                     continue;
                 }
 
@@ -185,7 +189,11 @@ impl Worker {
         });
     }
 
-    fn process_file(&self, path: &PathBuf, runtime: &Runtime) -> std::result::Result<AnalysisResult, DevFlowError> {
+    fn process_file(
+        &self,
+        path: &PathBuf,
+        runtime: &Runtime,
+    ) -> std::result::Result<AnalysisResult, DevFlowError> {
         log::debug!("Worker {} starting to process file {:?}", self.id, path);
 
         let content = match fs::read_to_string(path) {
@@ -197,13 +205,15 @@ impl Worker {
         };
 
         // Semantic analysis
-        let semantic_context = self.semantic_analyzer.analyze_file(path, &content)
+        let semantic_context = self
+            .semantic_analyzer
+            .analyze_file(path, &content)
             .map_err(DevFlowError::Semantic)?;
 
         // AI-enhanced analysis
         let ai_insights = runtime.block_on(async {
             let provider = CodeLLamaProvider::new(
-                "default_api_key", 
+                "default_api_key",
                 "https://api.together.xyz/v1",
                 "codellama/CodeLlama-34b-Instruct-hf",
                 10,
@@ -212,7 +222,9 @@ impl Worker {
         })?;
 
         // Merge semantic and AI analysis
-        let semantic_context = self.semantic_analyzer.merge_with_ai_analysis(&semantic_context, &ai_insights);
+        let semantic_context = self
+            .semantic_analyzer
+            .merge_with_ai_analysis(&semantic_context, &ai_insights);
 
         // Create analysis result
         let result = AnalysisResult {

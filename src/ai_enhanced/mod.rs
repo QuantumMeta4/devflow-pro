@@ -124,7 +124,7 @@ impl CodeLLamaProvider {
         let prompt = format!("Analyze the following code:\n\n{content}");
 
         let response = self.send_ai_request(&prompt).await?;
-        
+
         Ok(Self::parse_ai_response(&response))
     }
 }
@@ -144,12 +144,10 @@ impl AIProvider for CodeLLamaProvider {
     /// # Errors
     /// Returns an error if the analysis fails
     async fn suggest_fixes(&self, issues: &[crate::SecurityIssue]) -> Result<Vec<String>> {
-        let prompt = format!(
-            "Suggest fixes for the following security issues:\n\n{issues:?}"
-        );
+        let prompt = format!("Suggest fixes for the following security issues:\n\n{issues:?}");
 
         let response = self.send_ai_request(&prompt).await?;
-        
+
         Ok(Self::parse_fix_suggestions(&response))
     }
 }

@@ -81,7 +81,12 @@ async fn test_analysis_pipeline() {
 
     // Verify results
     let stats = pipeline.get_stats();
-    assert_eq!(stats.files_processed.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert_eq!(
+        stats
+            .files_processed
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
     assert_eq!(stats.errors.load(std::sync::atomic::Ordering::SeqCst), 0);
 
     // Clean up

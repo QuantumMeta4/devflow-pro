@@ -1,9 +1,9 @@
 use crate::ai_enhanced::AIAnalysisResult;
+use quote::ToTokens;
 use std::collections::HashSet;
 use std::path::Path;
+use syn::{self, parse_file, Block, Expr, FnArg, ImplItem, Item, ItemUse, UseTree};
 use thiserror::Error;
-use syn::{self, parse_file, Item, ItemUse, UseTree, FnArg, ImplItem, Expr, Block};
-use quote::ToTokens;
 
 #[derive(Debug, Error)]
 pub enum SemanticError {
@@ -124,7 +124,9 @@ impl SemanticAnalyzer {
                 Item::Fn(item_fn) => {
                     context.functions.push(FunctionInfo {
                         name: item_fn.sig.ident.to_string(),
-                        parameters: item_fn.sig.inputs
+                        parameters: item_fn
+                            .sig
+                            .inputs
                             .iter()
                             .map(|arg| match arg {
                                 FnArg::Typed(pat_type) => pat_type.ty.to_token_stream().to_string(),
@@ -141,10 +143,14 @@ impl SemanticAnalyzer {
                         if let ImplItem::Fn(impl_fn) = impl_item {
                             context.functions.push(FunctionInfo {
                                 name: impl_fn.sig.ident.to_string(),
-                                parameters: impl_fn.sig.inputs
+                                parameters: impl_fn
+                                    .sig
+                                    .inputs
                                     .iter()
                                     .map(|arg| match arg {
-                                        FnArg::Typed(pat_type) => pat_type.ty.to_token_stream().to_string(),
+                                        FnArg::Typed(pat_type) => {
+                                            pat_type.ty.to_token_stream().to_string()
+                                        }
                                         FnArg::Receiver(_) => "self".to_string(),
                                     })
                                     .collect(),
@@ -159,7 +165,8 @@ impl SemanticAnalyzer {
                     context.types.push(TypeInfo {
                         name: item_struct.ident.to_string(),
                         kind: TypeKind::Struct,
-                        fields: item_struct.fields
+                        fields: item_struct
+                            .fields
                             .iter()
                             .filter_map(|f| f.ident.as_ref().map(|i| i.to_string()))
                             .collect(),
@@ -203,9 +210,9 @@ impl SemanticAnalyzer {
     /// # Errors
     /// Returns an error if file analysis fails
     pub fn analyze_file(&self, path: &Path, content: &str) -> Result<SemanticContext> {
-        let extension = path.extension()
-            .and_then(|e| e.to_str())
-            .ok_or_else(|| SemanticError::InvalidPath("Failed to get file extension".to_string()))?;
+        let extension = path.extension().and_then(|e| e.to_str()).ok_or_else(|| {
+            SemanticError::InvalidPath("Failed to get file extension".to_string())
+        })?;
 
         match extension {
             "rs" => Ok(Self::analyze_rust(content)),
@@ -215,7 +222,11 @@ impl SemanticAnalyzer {
 
     /// Merges semantic context with AI analysis results
     #[must_use]
-    pub fn merge_with_ai_analysis(&self, semantic: &SemanticContext, ai: &AIAnalysisResult) -> SemanticContext {
+    pub fn merge_with_ai_analysis(
+        &self,
+        semantic: &SemanticContext,
+        ai: &AIAnalysisResult,
+    ) -> SemanticContext {
         let mut merged = semantic.clone();
 
         // Enhance function complexity with AI insights
