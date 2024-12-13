@@ -8,34 +8,34 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
+use globset::{Glob, GlobSetBuilder};
 
+pub mod analysis;
+pub mod ai_enhanced;
 pub mod ai;
 
-pub type Result<T> = std::result::Result<T, DevFlowError>;
-
-#[derive(Error, Debug)]
+#[derive(Debug, Error)]
 pub enum DevFlowError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-
-    #[error("Config error: {0}")]
-    Config(String),
-
-    #[error("AI error: {0}")]
-    Ai(String),
-
+    
     #[error("Thread error: {0}")]
     Thread(String),
+    
+    #[error("Semantic error: {0}")]
+    Semantic(#[from] analysis::semantic::SemanticError),
+    
+    #[error("AI error: {0}")]
+    AI(String),
 
     #[error("Invalid path: {0}")]
     InvalidPath(String),
 
-    #[error("Analysis error: {0}")]
-    Analysis(String),
-
     #[error("Serialization error: {0}")]
     Serialization(String),
 }
+
+pub type Result<T> = std::result::Result<T, DevFlowError>;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CodeMetrics {
@@ -85,6 +85,12 @@ impl ProjectInsights {
             security_summary: Vec::new(),
             analysis_timestamp: Utc::now(),
         }
+    }
+
+    pub fn with_ai_provider(_ai_provider: Arc<dyn ai_enhanced::AIProvider>) -> Self {
+        let mut insights = Self::new();
+        insights.analysis_timestamp = Utc::now();
+        insights
     }
 }
 
@@ -367,28 +373,19 @@ fn extract_dependencies(content: &str) -> Vec<String> {
 }
 
 fn is_ignored(path: &Path, ignored_patterns: &[String]) -> bool {
-    // Check against ignored patterns first
+    let mut builder = GlobSetBuilder::new();
+    
     for pattern in ignored_patterns {
-        if let Ok(pattern) = glob::Pattern::new(pattern) {
-            if pattern.matches_path(path) {
-                return true;
-            }
+        if let Ok(glob) = Glob::new(pattern) {
+            builder.add(glob);
         }
     }
-
-    // Check if file is hidden
-    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-        if file_name.starts_with('.') {
-            return true;
-        }
+    
+    if let Ok(set) = builder.build() {
+        set.is_match(path)
+    } else {
+        false
     }
-
-    // Check if any parent directory is hidden
-    path.ancestors().any(|p| {
-        p.file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|name| name.starts_with('.'))
-    })
 }
 
 fn normalize_language_extension(ext: &str) -> String {
@@ -492,7 +489,7 @@ pub fn format_report(insights: &ProjectInsights) -> String {
     let mut lang_dist: Vec<_> = insights.language_distribution.iter().collect();
     lang_dist.sort_by(|a, b| b.1.cmp(a.1));
     for (ext, count) in lang_dist {
-        output.push_str(&format!("  {ext:<8} files: {count:>3}\n"));
+        output.push_str(&format!("{ext:<8} files: {count:>3}\n"));
     }
     output.push('\n');
 

@@ -27,6 +27,12 @@ rayon = "1.8"
 tokio = { version = "1.35", features = ["full"] }
 futures = "0.3"
 futures-util = "0.3"
+async-trait = "0.1"
+num_cpus = "1.16"
+
+# AI and Machine Learning
+reqwest = { version = "0.11", features = ["json"] }
+tokenizers = "0.15"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -49,21 +55,25 @@ chrono = { version = "0.4", features = ["serde"] }
 ignore = "0.4"
 walkdir = "2.4"
 globset = "0.4"
-glob = "0.3"
 
-# Code analysis
-regex = "1.10"
-syn = { version = "2.0", features = ["full", "extra-traits"] }
-quote = "1.0"
+# Performance optimization
+crossbeam = "0.8"
+parking_lot = "0.12"
+dashmap = "5.5"
+
+# Security
+ring = "0.17"
+rustls = "0.21"
+
+# Semantic analysis
 tree-sitter = "0.20"
-
-# AI and machine learning
-reqwest = { version = "0.11", features = ["stream", "json"] }
-dotenv = "0.15"
+tree-sitter-rust = "0.20"
 
 [dev-dependencies]
 criterion = "0.5"
 tempfile = "3.8"
+tokio-test = "0.4"
+test-log = "0.2"
 pretty_assertions = "1.4"
 test-case = "3.3"
 

@@ -1,5 +1,4 @@
 use crate::DevFlowError;
-use dotenv::dotenv;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use reqwest::ClientBuilder;
 use serde::{Deserialize, Serialize};
@@ -14,6 +13,7 @@ const RATE_LIMIT_DELAY_MS: u64 = 2000;
 #[derive(Debug, Clone)]
 pub struct Coder {
     client: reqwest::Client,
+    api_key: String,
     model: String,
 }
 
@@ -59,30 +59,17 @@ impl Coder {
     /// - `TOGETHER_API_KEY` environment variable is not set or empty
     /// - Failed to create HTTP client
     pub fn new(config: super::types::LlamaConfig) -> Result<Self, DevFlowError> {
-        dotenv().ok();
-        let api_key = match env::var("TOGETHER_API_KEY") {
-            Ok(key) if !key.is_empty() => key,
-            _ => {
-                return Err(DevFlowError::Ai(
-                    "TOGETHER_API_KEY environment variable not set".into(),
-                ))
-            }
-        };
+        let api_key = env::var("TOGETHER_API_KEY")
+            .map_err(|_| DevFlowError::AI("TOGETHER_API_KEY environment variable not set".into()))?;
+
+        let client = ClientBuilder::new()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|e| DevFlowError::AI(format!("Failed to create HTTP client: {e}")))?;
 
         Ok(Self {
-            client: ClientBuilder::new()
-                .timeout(Duration::from_secs(30))
-                .default_headers({
-                    let mut headers = HeaderMap::new();
-                    headers.insert(
-                        AUTHORIZATION,
-                        HeaderValue::from_str(&format!("Bearer {api_key}"))
-                            .map_err(|e| DevFlowError::Ai(format!("Invalid API key: {e}")))?,
-                    );
-                    headers
-                })
-                .build()
-                .map_err(|e| DevFlowError::Ai(format!("Failed to create HTTP client: {e}")))?,
+            client,
+            api_key,
             model: config.model_name,
         })
     }
@@ -197,21 +184,29 @@ impl Coder {
         &self,
         request: &TogetherAIRequest,
     ) -> Result<TogetherAIResponse, DevFlowError> {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {}", self.api_key))
+                .map_err(|e| DevFlowError::AI(format!("Invalid API key: {e}")))?,
+        );
+
         let response = self
             .client
             .post("https://api.together.xyz/inference")
+            .headers(headers)
             .json(request)
             .send()
             .await
-            .map_err(|e| DevFlowError::Ai(e.to_string()))?;
+            .map_err(|e| DevFlowError::AI(e.to_string()))?;
 
         let result: TogetherAIResponse = response
             .json()
             .await
-            .map_err(|e| DevFlowError::Ai(e.to_string()))?;
+            .map_err(|e| DevFlowError::AI(e.to_string()))?;
 
         if let Some(error) = result.error {
-            return Err(DevFlowError::Ai(format!(
+            return Err(DevFlowError::AI(format!(
                 "{} ({})",
                 error.message, error.error_type
             )));
