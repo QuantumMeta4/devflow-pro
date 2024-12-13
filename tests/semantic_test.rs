@@ -1,6 +1,6 @@
 use devflow_pro::analysis::SemanticAnalyzer;
-use std::path::PathBuf;
 use std::fs;
+use std::path::PathBuf;
 
 #[test]
 fn test_semantic_analysis() {

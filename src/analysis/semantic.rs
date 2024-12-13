@@ -90,12 +90,10 @@ impl SemanticAnalyzer {
                 complexity
             }
             Expr::While(expr_while) => {
-                1 + Self::calculate_complexity(&expr_while.cond) + 
-                   Self::calculate_block_complexity(&expr_while.body)
+                1 + Self::calculate_complexity(&expr_while.cond)
+                    + Self::calculate_block_complexity(&expr_while.body)
             }
-            Expr::ForLoop(expr_for) => {
-                1 + Self::calculate_block_complexity(&expr_for.body)
-            }
+            Expr::ForLoop(expr_for) => 1 + Self::calculate_block_complexity(&expr_for.body),
             Expr::Match(expr_match) => {
                 let mut complexity = expr_match.arms.len();
                 for arm in &expr_match.arms {
