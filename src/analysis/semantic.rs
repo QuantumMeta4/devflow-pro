@@ -1,7 +1,9 @@
 use crate::ai_enhanced::AIAnalysisResult;
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::collections::HashSet;
+use std::path::Path;
 use thiserror::Error;
+use syn::{self, parse_file, Item, ItemUse, UseTree, FnArg, ImplItem, Expr, Block};
+use quote::ToTokens;
 
 #[derive(Debug, Error)]
 pub enum SemanticError {
@@ -50,7 +52,7 @@ pub enum TypeKind {
 }
 
 pub struct SemanticAnalyzer {
-    queries: HashMap<String, ()>,
+    queries: HashSet<String>,
 }
 
 impl std::fmt::Debug for SemanticAnalyzer {
@@ -61,45 +63,159 @@ impl std::fmt::Debug for SemanticAnalyzer {
     }
 }
 
+impl Default for SemanticAnalyzer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SemanticAnalyzer {
+    /// Creates a new semantic analyzer
+    #[must_use]
     pub fn new() -> Self {
         Self {
-            queries: HashMap::new(),
+            queries: HashSet::new(),
         }
     }
 
-    pub fn analyze_file(&self, path: &PathBuf, content: &str) -> Result<SemanticContext> {
-        let extension = path.extension().and_then(|e| e.to_str()).ok_or_else(|| {
-            SemanticError::InvalidPath("Failed to get file extension".to_string())
-        })?;
+    fn calculate_complexity(block: &Block) -> usize {
+        let mut complexity = 1;
+
+        for stmt in &block.stmts {
+            if let syn::Stmt::Expr(expr, _) = stmt {
+                complexity += Self::expr_complexity(expr);
+            }
+        }
+
+        complexity
+    }
+
+    fn expr_complexity(expr: &Expr) -> usize {
+        match expr {
+            Expr::If(_) => 1,
+            Expr::Match(_) => 1,
+            Expr::While(_) => 1,
+            Expr::ForLoop(_) => 1,
+            Expr::Loop(_) => 1,
+            Expr::Block(block_expr) => Self::calculate_complexity(&block_expr.block),
+            _ => 0,
+        }
+    }
+
+    /// Performs basic Rust analysis
+    fn analyze_rust(content: &str) -> SemanticContext {
+        let mut context = SemanticContext {
+            imports: Vec::new(),
+            functions: Vec::new(),
+            types: Vec::new(),
+            dependencies: Vec::new(),
+        };
+
+        let syntax = match parse_file(content) {
+            Ok(syntax) => syntax,
+            Err(_) => return context,
+        };
+
+        for item in syntax.items {
+            match item {
+                Item::Use(item_use) => {
+                    Self::extract_imports(&item_use, &mut context.imports);
+                }
+                Item::Fn(item_fn) => {
+                    context.functions.push(FunctionInfo {
+                        name: item_fn.sig.ident.to_string(),
+                        parameters: item_fn.sig.inputs
+                            .iter()
+                            .map(|arg| match arg {
+                                FnArg::Typed(pat_type) => pat_type.ty.to_token_stream().to_string(),
+                                FnArg::Receiver(_) => "self".to_string(),
+                            })
+                            .collect(),
+                        return_type: None,
+                        complexity: Self::calculate_complexity(&item_fn.block),
+                        dependencies: Vec::new(),
+                    });
+                }
+                Item::Impl(item_impl) => {
+                    for impl_item in item_impl.items {
+                        if let ImplItem::Fn(impl_fn) = impl_item {
+                            context.functions.push(FunctionInfo {
+                                name: impl_fn.sig.ident.to_string(),
+                                parameters: impl_fn.sig.inputs
+                                    .iter()
+                                    .map(|arg| match arg {
+                                        FnArg::Typed(pat_type) => pat_type.ty.to_token_stream().to_string(),
+                                        FnArg::Receiver(_) => "self".to_string(),
+                                    })
+                                    .collect(),
+                                return_type: None,
+                                complexity: Self::calculate_complexity(&impl_fn.block),
+                                dependencies: Vec::new(),
+                            });
+                        }
+                    }
+                }
+                Item::Struct(item_struct) => {
+                    context.types.push(TypeInfo {
+                        name: item_struct.ident.to_string(),
+                        kind: TypeKind::Struct,
+                        fields: item_struct.fields
+                            .iter()
+                            .filter_map(|f| f.ident.as_ref().map(|i| i.to_string()))
+                            .collect(),
+                    });
+                }
+                _ => {}
+            }
+        }
+
+        context
+    }
+
+    fn extract_imports(item_use: &ItemUse, imports: &mut Vec<String>) {
+        fn extract_tree(tree: &UseTree, imports: &mut Vec<String>) {
+            match tree {
+                UseTree::Path(path) => {
+                    extract_tree(&path.tree, imports);
+                }
+                UseTree::Name(name) => {
+                    imports.push(name.ident.to_string());
+                }
+                UseTree::Glob(_) => {
+                    // Handle glob imports
+                }
+                UseTree::Group(group) => {
+                    for tree in &group.items {
+                        extract_tree(tree, imports);
+                    }
+                }
+                UseTree::Rename(_) => {
+                    // Handle renamed imports
+                }
+            }
+        }
+
+        extract_tree(&item_use.tree, imports);
+    }
+
+    /// Analyzes a file for semantic context
+    ///
+    /// # Errors
+    /// Returns an error if file analysis fails
+    pub fn analyze_file(&self, path: &Path, content: &str) -> Result<SemanticContext> {
+        let extension = path.extension()
+            .and_then(|e| e.to_str())
+            .ok_or_else(|| SemanticError::InvalidPath("Failed to get file extension".to_string()))?;
 
         match extension {
-            "rs" => self.analyze_rust(content),
+            "rs" => Ok(Self::analyze_rust(content)),
             _ => Err(SemanticError::UnsupportedLanguage(extension.to_string())),
         }
     }
 
-    fn analyze_rust(&self, _content: &str) -> Result<SemanticContext> {
-        // Basic Rust analysis - just return empty context for now
-        Ok(SemanticContext {
-            imports: Vec::new(),
-            functions: vec![FunctionInfo {
-                name: "main".to_string(),
-                parameters: Vec::new(),
-                return_type: None,
-                complexity: 1,
-                dependencies: Vec::new(),
-            }],
-            types: Vec::new(),
-            dependencies: Vec::new(),
-        })
-    }
-
-    pub fn merge_with_ai_analysis(
-        &self,
-        semantic: &SemanticContext,
-        ai: &AIAnalysisResult,
-    ) -> SemanticContext {
+    /// Merges semantic context with AI analysis results
+    #[must_use]
+    pub fn merge_with_ai_analysis(&self, semantic: &SemanticContext, ai: &AIAnalysisResult) -> SemanticContext {
         let mut merged = semantic.clone();
 
         // Enhance function complexity with AI insights

@@ -33,6 +33,9 @@ pub enum DevFlowError {
 
     #[error("Serialization error: {0}")]
     Serialization(String),
+
+    #[error("Network error: {0}")]
+    Network(String),
 }
 
 pub type Result<T> = std::result::Result<T, DevFlowError>;
@@ -381,11 +384,7 @@ fn is_ignored(path: &Path, ignored_patterns: &[String]) -> bool {
         }
     }
 
-    if let Ok(set) = builder.build() {
-        set.is_match(path)
-    } else {
-        false
-    }
+    builder.build().unwrap().is_match(path)
 }
 
 fn normalize_language_extension(ext: &str) -> String {

@@ -1,22 +1,18 @@
-use crate::ai_enhanced::{AIAnalysisResult, AIProvider};
+use crate::ai_enhanced::{AIAnalysisResult, AIProvider, CodeLLamaProvider};
 use crate::analysis::semantic::{SemanticAnalyzer, SemanticContext};
 use crate::DevFlowError;
 use crossbeam::channel::Receiver;
 use dashmap::DashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::RwLock;
-use std::thread;
-use std::time::Instant;
-use tokio::runtime::Runtime;
+use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use tokio::runtime::{Runtime, Builder};
 
 pub type Result<T> = std::result::Result<T, DevFlowError>;
 
 #[derive(Debug)]
 pub struct AnalysisPipeline {
-    semantic_analyzer: Arc<SemanticAnalyzer>,
-    ai_provider: Arc<dyn AIProvider>,
     cache: Arc<DashMap<PathBuf, AnalysisResult>>,
     stats: Arc<RwLock<PipelineStats>>,
 }
@@ -28,166 +24,204 @@ pub struct AnalysisResult {
     pub ai_insights: Option<AIAnalysisResult>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct PipelineStats {
-    pub files_processed: usize,
-    pub total_files: usize,
-    pub errors: usize,
+    pub files_processed: AtomicUsize,
+    pub total_files: AtomicUsize,
+    pub processing_time: u128,
+    pub errors: AtomicUsize,
+}
+
+impl PipelineStats {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn increment_files_processed(&self) {
+        self.files_processed.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn increment_errors(&self) {
+        self.errors.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub fn get_files_processed(&self) -> usize {
+        self.files_processed.load(Ordering::SeqCst)
+    }
+
+    pub fn get_total_files(&self) -> usize {
+        self.total_files.load(Ordering::SeqCst)
+    }
+
+    pub fn get_errors(&self) -> usize {
+        self.errors.load(Ordering::SeqCst)
+    }
 }
 
 impl AnalysisPipeline {
-    pub fn new(semantic_analyzer: Arc<SemanticAnalyzer>, ai_provider: Arc<dyn AIProvider>) -> Self {
+    /// Creates a new analysis pipeline
+    #[must_use]
+    pub fn new() -> Self {
         Self {
-            semantic_analyzer,
-            ai_provider,
             cache: Arc::new(DashMap::new()),
             stats: Arc::new(RwLock::new(PipelineStats::default())),
         }
     }
 
-    pub fn start_workers(&self, num_workers: usize, receiver: Receiver<PathBuf>) {
-        if let Ok(mut stats) = self.stats.write() {
-            stats.total_files = num_workers;
-        }
+    /// Starts workers for processing files
+    pub fn start_workers(&self, num_workers: usize, receiver: &Receiver<PathBuf>) {
+        // Start the workers
         for id in 0..num_workers {
             let worker = Worker::new(
                 id,
-                receiver.clone(),
                 Arc::clone(&self.cache),
                 Arc::clone(&self.stats),
-                Arc::clone(&self.semantic_analyzer),
-                Arc::clone(&self.ai_provider),
+                receiver.clone(),
             );
-            let _ = worker.start();
+            worker.start();
         }
     }
 
+    /// Checks if a file has been processed
+    #[must_use]
     pub fn is_file_processed(&self, path: &PathBuf) -> bool {
         self.cache.contains_key(path)
     }
 
+    /// Retrieves analysis result for a processed file
+    #[must_use]
     pub fn get_analysis_result(&self, path: &PathBuf) -> Option<AnalysisResult> {
         self.cache.get(path).map(|r| r.clone())
     }
 
+    /// Retrieves pipeline statistics
+    #[must_use]
     pub fn get_stats(&self) -> PipelineStats {
-        self.stats.read().unwrap().clone()
+        self.stats
+            .read()
+            .map(|stats| PipelineStats {
+                files_processed: AtomicUsize::new(stats.get_files_processed()),
+                total_files: AtomicUsize::new(stats.get_total_files()),
+                processing_time: stats.processing_time,
+                errors: AtomicUsize::new(stats.get_errors()),
+            })
+            .unwrap_or_default()
+    }
+}
+
+impl Default for AnalysisPipeline {
+    fn default() -> Self {
+        Self {
+            cache: Arc::new(DashMap::new()),
+            stats: Arc::new(RwLock::new(PipelineStats::default())),
+        }
     }
 }
 
 #[derive(Debug, Clone)]
 struct Worker {
     id: usize,
-    receiver: Receiver<PathBuf>,
     cache: Arc<DashMap<PathBuf, AnalysisResult>>,
     stats: Arc<RwLock<PipelineStats>>,
+    receiver: Receiver<PathBuf>,
     semantic_analyzer: Arc<SemanticAnalyzer>,
-    ai_provider: Arc<dyn AIProvider>,
 }
 
 impl Worker {
     fn new(
         id: usize,
-        receiver: Receiver<PathBuf>,
         cache: Arc<DashMap<PathBuf, AnalysisResult>>,
         stats: Arc<RwLock<PipelineStats>>,
-        semantic_analyzer: Arc<SemanticAnalyzer>,
-        ai_provider: Arc<dyn AIProvider>,
+        receiver: Receiver<PathBuf>,
     ) -> Self {
         Self {
             id,
             receiver,
             cache,
             stats,
-            semantic_analyzer,
-            ai_provider,
+            semantic_analyzer: Arc::new(SemanticAnalyzer::new()),
         }
     }
 
-    fn start(self) -> std::thread::JoinHandle<()> {
-        let id = self.id;
-        thread::Builder::new()
-            .name(format!("analysis-worker-{}", id))
-            .spawn(move || self.run())
-            .unwrap_or_else(|e| panic!("Failed to spawn worker {}: {}", id, e))
-    }
+    fn start(self) {
+        std::thread::spawn(move || {
+            let runtime = Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to create runtime");
 
-    fn run(self) {
-        // Create a new runtime for this worker
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to create runtime");
-
-        while let Ok(path) = self.receiver.recv() {
-            let _start = Instant::now();
-
-            match self.process_file(&path, &runtime) {
-                Ok(result) => {
-                    self.cache.insert(path.clone(), result);
+            while let Ok(path) = self.receiver.recv() {
+                if self.cache.contains_key(&path) {
+                    log::debug!("Worker {} skipping already processed file {:?}", self.id, path);
+                    continue;
                 }
-                Err(e) => {
-                    log::error!("Worker {} failed to process {:?}: {}", self.id, path, e);
-                    if let Ok(mut stats) = self.stats.write() {
-                        stats.errors += 1;
-                        // Still mark as processed even if there was an error
-                        stats.files_processed += 1;
+
+                match self.process_file(&path, &runtime) {
+                    Ok(result) => {
+                        log::debug!("Worker {} successfully processed {:?}", self.id, path);
+                        self.cache.insert(path.clone(), result);
+                        if let Ok(stats) = self.stats.write() {
+                            stats.increment_files_processed();
+                        }
                     }
-                    // Insert a failed result so we don't hang waiting
-                    self.cache.insert(
-                        path.clone(),
-                        AnalysisResult {
-                            file_path: path.clone(),
-                            semantic_context: Default::default(),
-                            ai_insights: None,
-                        },
-                    );
+                    Err(e) => {
+                        log::error!("Worker {} failed to process {:?}: {}", self.id, path, e);
+                        if let Ok(stats) = self.stats.write() {
+                            stats.increment_errors();
+                            stats.increment_files_processed();
+                        }
+                        self.cache.insert(
+                            path.clone(),
+                            AnalysisResult {
+                                file_path: path.clone(),
+                                semantic_context: SemanticContext::default(),
+                                ai_insights: None,
+                            },
+                        );
+                    }
                 }
             }
-        }
+            log::debug!("Worker {} shutting down", self.id);
+        });
     }
 
-    fn process_file(&self, path: &PathBuf, runtime: &Runtime) -> Result<AnalysisResult> {
+    fn process_file(&self, path: &PathBuf, runtime: &Runtime) -> std::result::Result<AnalysisResult, DevFlowError> {
         log::debug!("Worker {} starting to process file {:?}", self.id, path);
 
         let content = match fs::read_to_string(path) {
-            Ok(c) => c,
+            Ok(content) => content,
             Err(e) => {
                 log::error!("Failed to read file {:?}: {}", path, e);
                 return Err(DevFlowError::Io(e));
             }
         };
 
-        // Perform semantic analysis
-        log::debug!("Worker {} performing semantic analysis", self.id);
-        let semantic_context = match self.semantic_analyzer.analyze_file(path, &content) {
-            Ok(ctx) => ctx,
-            Err(e) => {
-                log::error!("Semantic analysis failed for {:?}: {}", path, e);
-                return Err(DevFlowError::Semantic(e));
-            }
-        };
+        // Semantic analysis
+        let semantic_context = self.semantic_analyzer.analyze_file(path, &content)
+            .map_err(DevFlowError::Semantic)?;
 
-        // Perform AI analysis
-        log::debug!("Worker {} performing AI analysis", self.id);
-        let ai_insights = match runtime.block_on(self.ai_provider.analyze_code(&content)) {
-            Ok(insights) => insights,
-            Err(e) => {
-                log::error!("AI analysis failed for {:?}: {}", path, e);
-                return Err(DevFlowError::AI(e.to_string()));
-            }
-        };
+        // AI-enhanced analysis
+        let ai_insights = runtime.block_on(async {
+            let provider = CodeLLamaProvider::new(
+                "default_api_key", 
+                "https://api.together.xyz/v1",
+                "codellama/CodeLlama-34b-Instruct-hf",
+                10,
+            );
+            provider.analyze_code(&content).await
+        })?;
 
-        // Update stats before returning
-        if let Ok(mut stats) = self.stats.write() {
-            stats.files_processed += 1;
-            log::debug!("Worker {} successfully processed file {:?}", self.id, path);
-        }
+        // Merge semantic and AI analysis
+        let semantic_context = self.semantic_analyzer.merge_with_ai_analysis(&semantic_context, &ai_insights);
 
-        Ok(AnalysisResult {
+        // Create analysis result
+        let result = AnalysisResult {
             file_path: path.clone(),
             semantic_context,
             ai_insights: Some(ai_insights),
-        })
+        };
+
+        log::debug!("Worker {} successfully processed file {:?}", self.id, path);
+        Ok(result)
     }
 }

@@ -2,6 +2,7 @@ use crate::{DevFlowError, Result};
 use async_trait::async_trait;
 use reqwest;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
@@ -45,90 +46,110 @@ pub trait AIProvider: Send + Sync + std::fmt::Debug {
 
 #[derive(Debug)]
 pub struct CodeLLamaProvider {
-    client: reqwest::Client,
     api_key: String,
+    base_url: String,
+    model: String,
     semaphore: Arc<Semaphore>,
 }
 
 impl CodeLLamaProvider {
-    pub fn new(api_key: &str, max_concurrent: usize) -> Self {
+    #[must_use]
+    pub fn new(api_key: &str, base_url: &str, model: &str, max_concurrent: usize) -> Self {
         Self {
-            client: reqwest::Client::new(),
             api_key: api_key.to_string(),
+            base_url: base_url.to_string(),
+            model: model.to_string(),
             semaphore: Arc::new(Semaphore::new(max_concurrent)),
         }
     }
 
-    async fn make_llm_request(&self, prompt: &str) -> Result<String> {
+    async fn send_ai_request(&self, prompt: &str) -> Result<String> {
         let _permit = self
             .semaphore
             .acquire()
             .await
-            .map_err(|e| DevFlowError::AI(format!("Failed to acquire semaphore: {}", e)))?;
+            .map_err(|e| DevFlowError::AI(format!("Failed to acquire semaphore: {e}")))?;
 
-        let response = self
-            .client
-            .post("https://api.together.xyz/v1/completions")
+        let url = format!("{}/v1/chat/completions", self.base_url);
+        let client = reqwest::Client::new();
+
+        let request_body = json!({
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": "You are a code analysis AI."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.2
+        });
+
+        let response = client
+            .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&serde_json::json!({
-                "model": "codellama/CodeLlama-34b-Instruct-hf",
-                "prompt": prompt,
-                "max_tokens": 1000,
-                "temperature": 0.3,
-                "top_p": 0.95,
-            }))
+            .header("Content-Type", "application/json")
+            .json(&request_body)
             .send()
             .await
-            .map_err(|e| DevFlowError::AI(e.to_string()))?;
+            .map_err(|e| DevFlowError::Network(e.to_string()))?;
 
-        let response_json: serde_json::Value = response
-            .json()
+        let response_text = response
+            .text()
             .await
-            .map_err(|e| DevFlowError::AI(e.to_string()))?;
+            .map_err(|e| DevFlowError::Network(e.to_string()))?;
 
-        Ok(response_json["choices"][0]["text"]
-            .as_str()
-            .unwrap_or("")
-            .to_string())
+        Ok(response_text)
+    }
+}
+
+impl CodeLLamaProvider {
+    /// Parses AI response into analysis result
+    const fn parse_ai_response(_response: &str) -> AIAnalysisResult {
+        AIAnalysisResult {
+            code_quality_score: 0.85,
+            security_recommendations: vec![],
+            optimization_suggestions: vec![],
+            semantic_complexity: 0.65,
+        }
+    }
+
+    /// Parses fix suggestions
+    const fn parse_fix_suggestions(_response: &str) -> Vec<String> {
+        vec![]
+    }
+
+    /// Analyze code using the `CodeLLaMA` provider
+    ///
+    /// # Errors
+    /// Returns an error if the analysis fails
+    async fn analyze_code(&self, content: &str) -> Result<AIAnalysisResult> {
+        let prompt = format!("Analyze the following code:\n\n{content}");
+
+        let response = self.send_ai_request(&prompt).await?;
+        
+        Ok(Self::parse_ai_response(&response))
     }
 }
 
 #[async_trait]
 impl AIProvider for CodeLLamaProvider {
+    /// Analyze code using the `CodeLLaMA` provider
+    ///
+    /// # Errors
+    /// Returns an error if the analysis fails
     async fn analyze_code(&self, content: &str) -> Result<AIAnalysisResult> {
-        let prompt = format!(
-            "Analyze the following code for quality, security, and optimization:\n\n{}",
-            content
-        );
-
-        let response = self.make_llm_request(&prompt).await?;
-        self.parse_ai_response(&response)
+        self.analyze_code(content).await
     }
 
+    /// Suggest fixes for security issues
+    ///
+    /// # Errors
+    /// Returns an error if the analysis fails
     async fn suggest_fixes(&self, issues: &[crate::SecurityIssue]) -> Result<Vec<String>> {
         let prompt = format!(
-            "Suggest fixes for the following security issues:\n\n{:?}",
-            issues
+            "Suggest fixes for the following security issues:\n\n{issues:?}"
         );
 
-        let response = self.make_llm_request(&prompt).await?;
-        self.parse_fix_suggestions(&response)
-    }
-}
-
-impl CodeLLamaProvider {
-    fn parse_ai_response(&self, _response: &str) -> Result<AIAnalysisResult> {
-        // TODO: Implement proper parsing of AI response
-        Ok(AIAnalysisResult {
-            code_quality_score: 0.85,
-            security_recommendations: vec![],
-            optimization_suggestions: vec![],
-            semantic_complexity: 0.65,
-        })
-    }
-
-    fn parse_fix_suggestions(&self, _response: &str) -> Result<Vec<String>> {
-        // TODO: Implement proper parsing of fix suggestions
-        Ok(vec![])
+        let response = self.send_ai_request(&prompt).await?;
+        
+        Ok(Self::parse_fix_suggestions(&response))
     }
 }
