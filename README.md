@@ -100,6 +100,86 @@ devflow-pro ai review ./my-project
 devflow-pro ai optimize ./my-project
 ```
 
+## 🛠️ Advanced Configuration
+
+```toml
+# config.toml
+[analysis]
+max_file_size = 1048576  # 1MB
+min_severity = "low"     # low, medium, high, critical
+
+[ignore]
+patterns = [
+  "**/target/**",
+  "**/.git/**",
+  "**/node_modules/**"
+]
+
+[security]
+enabled = true
+patterns = [
+  "password\\s*=",
+  "api[_-]?key\\s*="
+]
+```
+
+## 🔍 Analysis Features
+
+#### Static Analysis
+- **Code Complexity**: Cyclomatic complexity calculation
+- **Dependency Analysis**: Track imports and module relationships
+- **Security Scanning**: Built-in patterns for common vulnerabilities
+  - Command Injection
+  - Hardcoded Secrets
+  - SQL Injection
+  - Unsafe File Operations
+  - XSS Vulnerabilities
+  - Unsafe Deserialization
+
+#### Semantic Analysis
+- **AST Parsing**: Deep code structure analysis
+- **Function Analysis**: Track function complexity and relationships
+- **Import Analysis**: Detailed dependency graphs
+- **Complexity Metrics**: Per-function and per-file complexity scoring
+
+#### Performance Analysis
+- **File Size Distribution**: Categorization of files by size
+- **Language Distribution**: Breakdown of codebase by language
+- **Recent Changes**: Track recently modified files
+- **Comment Ratio**: Code documentation coverage
+
+## 📊 Output Formats
+
+#### JSON Output
+```bash
+devflow-pro -p . --format json
+```
+
+```json
+{
+  "files_analyzed": 100,
+  "total_lines": 5000,
+  "language_distribution": {
+    "rust": 45,
+    "python": 30,
+    "javascript": 25
+  },
+  "security_summary": [
+    {
+      "severity": "high",
+      "description": "Potential hardcoded secret",
+      "file": "config.js",
+      "line": 42
+    }
+  ]
+}
+```
+
+#### Human-Readable Report
+```bash
+devflow-pro -p . --format text
+```
+
 ## ⚙️ Configuration
 
 ### Environment Variables
@@ -114,6 +194,12 @@ Get API here: https://www.together.ai
 DEVFLOW_LOG_LEVEL=info
 DEVFLOW_MAX_THREADS=4
 ```
+
+### 🔧 Environment Variables
+
+- `TOGETHER_API_KEY`: API key for AI-powered analysis
+- `DEVFLOW_LOG_LEVEL`: Set logging verbosity (debug, info, warn, error)
+- `DEVFLOW_CONFIG_PATH`: Custom path to configuration file
 
 ## 🤝 Contributing
 
@@ -141,6 +227,27 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ---
 
+
+
+## 🎯 Use Cases
+
+1. **CI/CD Integration**
+   ```bash
+   # In your CI pipeline
+   devflow-pro -p . --min-severity high --format json > analysis.json
+   ```
+
+2. **Pre-commit Hooks**
+   ```bash
+   # .git/hooks/pre-commit
+   devflow-pro -p . --security-only
+   ```
+
+3. **Code Review Automation**
+   ```bash
+   # Generate detailed review report
+   devflow-pro -p . --ai --format markdown > review.md
+   ```
 <div align="center">
 Crafted with ❤️ by the Omega Phi Team
 </div>
