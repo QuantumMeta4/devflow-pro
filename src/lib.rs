@@ -14,18 +14,18 @@ pub mod ai;
 pub mod ai_enhanced;
 pub mod analysis;
 
-#[derive(Debug, Error)]
+#[derive(Error, Debug)]
 pub enum DevFlowError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error("Semantic analysis error: {0}")]
+    Semantic(#[from] analysis::SemanticError),
+
     #[error("Thread error: {0}")]
     Thread(String),
 
-    #[error("Semantic error: {0}")]
-    Semantic(#[from] analysis::semantic::SemanticError),
-
-    #[error("AI error: {0}")]
+    #[error("AI analysis error: {0}")]
     AI(String),
 
     #[error("Invalid path: {0}")]

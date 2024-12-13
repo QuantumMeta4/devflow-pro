@@ -11,11 +11,11 @@ use tokio::runtime::{Builder, Runtime};
 
 pub type Result<T> = std::result::Result<T, DevFlowError>;
 
-/// Pipeline for analyzing code files
+/// Main pipeline for analyzing code files
 #[derive(Debug)]
-pub struct AnalysisPipeline {
+pub struct Pipeline {
     cache: Arc<DashMap<PathBuf, AnalysisResult>>,
-    stats: Arc<RwLock<PipelineStats>>,
+    stats: Arc<RwLock<Stats>>,
 }
 
 #[derive(Debug, Clone)]
@@ -27,14 +27,14 @@ pub struct AnalysisResult {
 
 /// Statistics tracking for the analysis process
 #[derive(Debug, Default)]
-pub struct PipelineStats {
+pub struct Stats {
     pub files_processed: AtomicUsize,
     pub total_files: AtomicUsize,
     pub processing_time: u128,
     pub errors: AtomicUsize,
 }
 
-impl Clone for PipelineStats {
+impl Clone for Stats {
     fn clone(&self) -> Self {
         Self {
             files_processed: AtomicUsize::new(self.files_processed.load(Ordering::SeqCst)),
@@ -45,7 +45,8 @@ impl Clone for PipelineStats {
     }
 }
 
-impl PipelineStats {
+impl Stats {
+    /// Creates a new stats instance
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -70,13 +71,13 @@ impl PipelineStats {
     }
 }
 
-impl AnalysisPipeline {
-    /// Creates a new analysis pipeline
+impl Pipeline {
+    /// Creates a new pipeline
     #[must_use]
     pub fn new() -> Self {
         Self {
             cache: Arc::new(DashMap::new()),
-            stats: Arc::new(RwLock::new(PipelineStats::default())),
+            stats: Arc::new(RwLock::new(Stats::default())),
         }
     }
 
@@ -107,12 +108,12 @@ impl AnalysisPipeline {
 
     /// Retrieves pipeline statistics
     #[must_use]
-    pub fn get_stats(&self) -> PipelineStats {
+    pub fn get_stats(&self) -> Stats {
         self.stats.read().expect("Failed to read stats").clone()
     }
 }
 
-impl Default for AnalysisPipeline {
+impl Default for Pipeline {
     fn default() -> Self {
         Self::new()
     }
@@ -122,7 +123,7 @@ impl Default for AnalysisPipeline {
 struct Worker {
     id: usize,
     cache: Arc<DashMap<PathBuf, AnalysisResult>>,
-    stats: Arc<RwLock<PipelineStats>>,
+    stats: Arc<RwLock<Stats>>,
     receiver: Receiver<PathBuf>,
     semantic_analyzer: Arc<Mutex<SemanticAnalyzer>>,
 }
@@ -131,7 +132,7 @@ impl Worker {
     fn new(
         id: usize,
         cache: Arc<DashMap<PathBuf, AnalysisResult>>,
-        stats: Arc<RwLock<PipelineStats>>,
+        stats: Arc<RwLock<Stats>>,
         receiver: Receiver<PathBuf>,
     ) -> Self {
         Self {
