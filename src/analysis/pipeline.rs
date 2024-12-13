@@ -1,5 +1,5 @@
 use crate::ai_enhanced::{AIAnalysisResult, AIProvider, CodeLLamaProvider};
-use crate::analysis::semantic::{SemanticAnalyzer, SemanticContext};
+use crate::analysis::semantic::{Analyzer, Context};
 use crate::DevFlowError;
 use crossbeam::channel::Receiver;
 use dashmap::DashMap;
@@ -21,7 +21,7 @@ pub struct Pipeline {
 #[derive(Debug, Clone)]
 pub struct AnalysisResult {
     pub file_path: PathBuf,
-    pub semantic_context: SemanticContext,
+    pub semantic_context: Context,
     pub ai_insights: Option<AIAnalysisResult>,
 }
 
@@ -107,6 +107,9 @@ impl Pipeline {
     }
 
     /// Retrieves pipeline statistics
+    ///
+    /// # Panics
+    /// Panics if the stats lock is poisoned
     #[must_use]
     pub fn get_stats(&self) -> Stats {
         self.stats.read().expect("Failed to read stats").clone()
@@ -125,7 +128,7 @@ struct Worker {
     cache: Arc<DashMap<PathBuf, AnalysisResult>>,
     stats: Arc<RwLock<Stats>>,
     receiver: Receiver<PathBuf>,
-    semantic_analyzer: Arc<Mutex<SemanticAnalyzer>>,
+    semantic_analyzer: Arc<Mutex<Analyzer>>,
 }
 
 impl Worker {
@@ -140,7 +143,7 @@ impl Worker {
             receiver,
             cache,
             stats,
-            semantic_analyzer: Arc::new(Mutex::new(SemanticAnalyzer::default())),
+            semantic_analyzer: Arc::new(Mutex::new(Analyzer::default())),
         }
     }
 
@@ -179,7 +182,7 @@ impl Worker {
                             path.clone(),
                             AnalysisResult {
                                 file_path: path.clone(),
-                                semantic_context: SemanticContext::default(),
+                                semantic_context: Context::default(),
                                 ai_insights: None,
                             },
                         );

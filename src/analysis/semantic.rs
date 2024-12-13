@@ -5,38 +5,38 @@ use syn::{self, parse_file, Block, Expr, ImplItem, Item, UseTree};
 use thiserror::Error;
 
 /// Error types for semantic analysis operations
-#[derive(Error, Debug)]
-pub enum SemanticError {
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
-    #[error("Parse error: {0}")]
-    ParseError(#[from] syn::Error),
+#[derive(Debug, Error)]
+pub enum AnalysisError {
+    #[error("Failed to read file: {0}")]
+    FileRead(#[from] std::io::Error),
+    #[error("Failed to parse Rust code: {0}")]
+    Parse(#[from] syn::Error),
 }
 
-pub type Result<T> = std::result::Result<T, SemanticError>;
+pub type Result<T> = std::result::Result<T, AnalysisError>;
 
 /// Context containing semantic analysis results
 #[derive(Debug, Default, Clone)]
-pub struct SemanticContext {
-    pub imports: Vec<String>,
-    pub functions: Vec<String>,
+pub struct Context {
     pub complexity: usize,
+    pub functions: Vec<String>,
+    pub imports: Vec<String>,
 }
 
-/// Analyzer for extracting semantic information from Rust source code
+/// Analyzer for Rust source code
 #[derive(Debug)]
-pub struct SemanticAnalyzer {
-    cache: DashMap<PathBuf, SemanticContext>,
+pub struct Analyzer {
+    cache: DashMap<PathBuf, Context>,
 }
 
-impl Default for SemanticAnalyzer {
+impl Default for Analyzer {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SemanticAnalyzer {
-    /// Creates a new semantic analyzer instance
+impl Analyzer {
+    /// Creates a new analyzer instance
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -51,7 +51,7 @@ impl SemanticAnalyzer {
     /// - The file cannot be read
     /// - The file contains invalid Rust syntax
     /// - The analyzer fails to parse the syntax tree
-    pub fn analyze_file(&mut self, path: &PathBuf) -> Result<SemanticContext> {
+    pub fn analyze_file(&mut self, path: &PathBuf) -> Result<Context> {
         if let Some(ctx) = self.cache.get(path) {
             return Ok(ctx.clone());
         }
@@ -59,7 +59,7 @@ impl SemanticAnalyzer {
         let source = std::fs::read_to_string(path)?;
         let syntax_tree = parse_file(&source)?;
 
-        let mut analysis = SemanticContext::default();
+        let mut analysis = Context::default();
 
         for item in syntax_tree.items {
             match item {
@@ -154,9 +154,9 @@ impl SemanticAnalyzer {
     #[must_use]
     pub const fn merge_with_ai_analysis(
         &self,
-        context: SemanticContext,
+        context: Context,
         _ai: &AIAnalysisResult,
-    ) -> SemanticContext {
+    ) -> Context {
         context
     }
 }

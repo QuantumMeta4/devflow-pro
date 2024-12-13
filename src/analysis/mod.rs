@@ -1,5 +1,5 @@
 mod pipeline;
 mod semantic;
 
-pub use pipeline::{AnalysisResult, Pipeline, Stats};
-pub use semantic::{SemanticAnalyzer, SemanticContext, SemanticError};
+pub use pipeline::{Result, Pipeline, Stats};
+pub use semantic::{Analyzer as SemanticAnalyzer, Context as SemanticContext, AnalysisError as SemanticError};
