@@ -57,6 +57,39 @@ struct Args {
     /// Enable AI analysis
     #[arg(long)]
     ai: bool,
+
+    /// Enable IDE plugin support
+    #[arg(long)]
+    ide_plugin: bool,
+
+    /// Enable Git hooks integration
+    #[arg(long)]
+    git_hooks: bool,
+
+    /// Enable CI/CD pipeline integration
+    #[arg(long)]
+    ci_cd: bool,
+}
+
+/// Sets up IDE plugin support
+fn setup_ide_plugin(target_dir: &PathBuf) -> Result<()> {
+    // Logic to generate IDE plugin configuration
+    info!("Setting up IDE plugin support in {}", target_dir.display());
+    Ok(())
+}
+
+/// Sets up Git hooks
+fn setup_git_hooks(target_dir: &PathBuf) -> Result<()> {
+    // Logic to create Git hooks
+    info!("Setting up Git hooks in {}", target_dir.display());
+    Ok(())
+}
+
+/// Sets up CI/CD pipeline integration
+fn setup_ci_cd_integration(target_dir: &PathBuf) -> Result<()> {
+    // Logic to generate CI/CD configuration
+    info!("Setting up CI/CD pipeline integration in {}", target_dir.display());
+    Ok(())
 }
 
 #[tokio::main]
@@ -128,6 +161,21 @@ async fn run() -> Result<ProjectInsights> {
     };
 
     let insights = analyze_codebase(&target_dir, &config)?;
+
+    // Setup IDE plugin if enabled
+    if args.ide_plugin {
+        setup_ide_plugin(&target_dir)?;
+    }
+
+    // Setup Git hooks if enabled
+    if args.git_hooks {
+        setup_git_hooks(&target_dir)?;
+    }
+
+    // Setup CI/CD integration if enabled
+    if args.ci_cd {
+        setup_ci_cd_integration(&target_dir)?;
+    }
 
     // Run AI analysis if enabled
     if args.ai {

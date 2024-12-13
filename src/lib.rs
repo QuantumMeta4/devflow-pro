@@ -6,10 +6,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use thiserror::Error;
+use notify::{Watcher, RecursiveMode, watcher};
+use std::time::Duration;
+use std::thread;
 
 pub mod ai;
+pub mod lsp;
 
 pub type Result<T> = std::result::Result<T, DevFlowError>;
 
@@ -103,9 +107,138 @@ impl ProjectInsights {
 /// * `DevFlowError::Thread` - If there are issues with parallel processing
 /// * `DevFlowError::InvalidPath` - If the provided path is invalid
 pub fn analyze_codebase(path: &Path, config: &AppConfig) -> Result<ProjectInsights> {
-    let insights = Arc::new(Mutex::new(ProjectInsights::new()));
+    let insights = Arc::new(RwLock::new(ProjectInsights::new()));
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    // Set up file system watcher for real-time analysis
+    let mut watcher = watcher(tx, Duration::from_secs(2)).unwrap();
+    watcher.watch(path, RecursiveMode::Recursive).unwrap();
+
+    // Spawn a thread to handle file changes
+    thread::spawn(move || {
+        loop {
+            match rx.recv() {
+                Ok(event) => {
+                    // Handle file change event
+                    // Trigger incremental analysis
+                },
+                Err(e) => println!("watch error: {:?}", e),
+            }
+        }
+    });
 
     let walker = Walk::new(path)
+        .filter_map(|entry| {
+            match entry {
+                Ok(entry) => {
+                    // Only process files
+                    if entry.file_type().is_some_and(|ft| ft.is_file()) {
+                        Some(entry)
+                    } else {
+                        None
+                    }
+                }
+                Err(e) => {
+                    error!("Error walking directory: {}", e);
+                    None
+                }
+            }
+        })
+        .collect::<Vec<_>>();
+
+    // Process files in parallel
+    walker
+        .par_iter()
+        .try_for_each(|entry| analyze_file(entry.path(), &insights, config))?;
+
+    // Return the final insights
+    let final_insights = insights
+        .read()
+        .map_err(|_| DevFlowError::Thread("Failed to acquire lock".into()))?
+        .clone();
+
+    Ok(final_insights)
+}
+
+fn analyze_file(
+    path: &Path,
+    insights: &Arc<RwLock<ProjectInsights>>,
+    config: &AppConfig,
+) -> Result<()> {
+    // Skip files that are too large
+    let metadata = fs::metadata(path)?;
+    if metadata.len() > config.max_file_size as u64 {
+        return Ok(());
+    }
+
+    // Skip ignored files
+    if is_ignored(path, &config.ignored_patterns) {
+        return Ok(());
+    }
+
+    // Read file contents, handling non-UTF-8 files
+    let content = match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(e) => {
+            // Try reading as raw bytes if UTF-8 conversion fails
+            match std::fs::read(path) {
+                Ok(_) => {
+                    // Log the non-UTF-8 file but continue processing
+                    error!("Skipping non-UTF-8 file: {}", path.display());
+                    return Ok(());
+                }
+                Err(read_err) => {
+                    error!(
+                        "Failed to read file {}: {} (Original error: {})",
+                        path.display(),
+                        read_err,
+                        e
+                    );
+                    return Ok(());
+                }
+            }
+        }
+    };
+
+    let lines: Vec<&str> = content.lines().collect();
+
+    // Calculate metrics
+    let metrics = calculate_metrics(path, &content, config)?;
+    let language = normalize_language_extension(
+        path.extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("unknown"),
+    );
+    let security_issues = check_security_issues(&lines, config);
+
+    // Acquire lock and update insights
+    let mut insights_guard = insights
+        .write()
+        .map_err(|_| DevFlowError::Thread("Failed to acquire lock".into()))?;
+
+    // Increment files analyzed
+    insights_guard.files_analyzed += 1;
+
+    // Update total lines
+    insights_guard.total_lines += lines.len();
+
+    // Update language distribution
+    *insights_guard
+        .language_distribution
+        .entry(language)
+        .or_insert(0) += 1;
+
+    // Store file metrics
+    insights_guard
+        .file_metrics
+        .insert(path.to_string_lossy().into_owned(), metrics);
+
+    // Extend security summary
+    insights_guard.security_summary.extend(security_issues);
+    drop(insights_guard);
+
+    Ok(())
+}
         .filter_map(|entry| {
             match entry {
                 Ok(entry) => {
@@ -606,31 +739,31 @@ impl Default for AppConfig {
             ],
             security_patterns: vec![
                 // Command Injection
-                String::from("eval\\s*\\("),
-                String::from("exec\\s*\\("),
-                String::from("system\\s*\\("),
-                String::from("shell_exec\\s*\\("),
+                String::from("eval\s*\("),
+                String::from("exec\s*\("),
+                String::from("system\s*\("),
+                String::from("shell_exec\s*\("),
                 // Hardcoded Secrets
-                String::from("password\\s*="),
-                String::from("api[_-]?key\\s*="),
-                String::from("secret\\s*="),
-                String::from("token\\s*="),
+                String::from("password\s*="),
+                String::from("api[_-]?key\s*="),
+                String::from("secret\s*="),
+                String::from("token\s*="),
                 // SQL Injection
-                String::from("execute\\s*\\("),
-                String::from("raw\\s*sql"),
-                String::from("\\.query\\s*\\("),
+                String::from("execute\s*\("),
+                String::from("raw\s*sql"),
+                String::from("\.query\s*\("),
                 // File Operations
-                String::from("file_get_contents\\s*\\("),
-                String::from("fopen\\s*\\("),
-                String::from("readFile\\s*\\("),
+                String::from("file_get_contents\s*\("),
+                String::from("fopen\s*\("),
+                String::from("readFile\s*\("),
                 // Unsafe Deserialization
-                String::from("unserialize\\s*\\("),
-                String::from("JSON\\.parse\\s*\\("),
-                String::from("fromJson\\s*\\("),
+                String::from("unserialize\s*\("),
+                String::from("JSON\.parse\s*\("),
+                String::from("fromJson\s*\("),
                 // XSS Vulnerabilities
-                String::from("innerHTML\\s*="),
-                String::from("document\\.write\\s*\\("),
-                String::from("\\$\\s*\\("),
+                String::from("innerHTML\s*="),
+                String::from("document\.write\s*\("),
+                String::from("\$\s*\("),
             ],
             min_severity: IssueSeverity::Low,
         }
