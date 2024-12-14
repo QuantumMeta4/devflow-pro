@@ -1,41 +1,69 @@
-use devflow_pro::windsurf::{AnalysisContext, IDEInterface, Position, WindsurfIntegration};
-use std::path::PathBuf;
+use anyhow::Result;
+use async_trait::async_trait;
+use devflow_pro::windsurf::{
+    interface::{AnalysisContext, IDEInterface},
+    Position, Range, WindsurfPlugin,
+};
+
+struct TestIntegration {
+    plugin: WindsurfPlugin,
+}
+
+impl TestIntegration {
+    fn new() -> Self {
+        Self {
+            plugin: WindsurfPlugin::default(),
+        }
+    }
+}
+
+#[async_trait]
+impl IDEInterface for TestIntegration {
+    async fn handle_text_change(&self, content: &str) -> Result<()> {
+        println!("Handling text change: {content}");
+        Ok(())
+    }
+
+    async fn handle_cursor_move(&self, position: Position) -> Result<()> {
+        println!("Handling cursor move: {position:?}");
+        Ok(())
+    }
+
+    async fn handle_visible_range_change(&self, range: Range) -> Result<()> {
+        println!("Handling visible range change: {range:?}");
+        Ok(())
+    }
+
+    async fn toggle_real_time_analysis(&self) -> Result<()> {
+        println!("Toggling real-time analysis");
+        Ok(())
+    }
+
+    fn get_plugin(&self) -> &WindsurfPlugin {
+        &self.plugin
+    }
+}
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create a new IDE integration
-    let integration = WindsurfIntegration::new().await?;
+async fn main() -> Result<()> {
+    let integration = TestIntegration::new();
 
-    // Example context
-    let context = AnalysisContext {
-        code_content: String::from("fn main() { println!(\"Hello, World!\"); }"),
-        file_path: PathBuf::from("example.rs").to_string_lossy().into_owned(),
-        cursor_position: Some(0),
+    let analysis_ctx = AnalysisContext {
+        content: String::from("fn main() {}"),
+        position: Some(Position {
+            line: 0,
+            character: 0,
+        }),
+        file_path: "test.rs".into(),
         visible_range: None,
-        language: "rust".to_string(),
     };
 
-    // Handle text change
+    println!("Analysis context: {analysis_ctx:?}");
     integration
-        .handle_text_change(context.code_content.clone())
+        .handle_text_change(&analysis_ctx.content)
         .await?;
-
-    // Handle cursor move
     integration
-        .handle_cursor_move(Position {
-            line: 0,
-            column: 0,
-            offset: 0,
-        })
-        .await?;
-
-    // Update status bar
-    integration
-        .update_status_bar(
-            "windsurf",
-            "DevFlow Pro Ready".to_string(),
-            Some("Click for more information".to_string()),
-        )
+        .handle_cursor_move(analysis_ctx.position.unwrap())
         .await?;
 
     Ok(())

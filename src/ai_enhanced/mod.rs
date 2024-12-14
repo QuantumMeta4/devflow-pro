@@ -1,28 +1,27 @@
-use crate::{DevFlowError, Result};
+use crate::DevFlowError;
+use crate::IssueSeverity;
 use async_trait::async_trait;
-use reqwest;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use std::{fmt, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::Semaphore;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AIAnalysisResult {
-    pub code_quality_score: f64,
-    pub security_recommendations: Vec<SecurityRecommendation>,
-    pub optimization_suggestions: Vec<OptimizationSuggestion>,
-    pub semantic_complexity: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SecurityRecommendation {
-    pub severity: crate::IssueSeverity,
+    pub severity: IssueSeverity,
     pub description: String,
     pub suggested_fix: Option<String>,
     pub confidence: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum OptimizationCategory {
+    Performance,
+    Memory,
+    Security,
+    Other,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OptimizationSuggestion {
     pub category: OptimizationCategory,
     pub description: String,
@@ -30,244 +29,108 @@ pub struct OptimizationSuggestion {
     pub suggested_implementation: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum OptimizationCategory {
-    Performance,
-    Memory,
-    Security,
-    Maintainability,
-}
-
-impl fmt::Display for OptimizationCategory {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Performance => write!(f, "Performance"),
-            Self::Memory => write!(f, "Memory"),
-            Self::Security => write!(f, "Security"),
-            Self::Maintainability => write!(f, "Maintainability"),
-        }
-    }
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AIAnalysisResult {
+    pub code_quality_score: f64,
+    pub semantic_complexity: f64,
+    pub security_recommendations: Vec<SecurityRecommendation>,
+    pub optimization_suggestions: Vec<OptimizationSuggestion>,
 }
 
 #[async_trait]
 pub trait AIProvider: Send + Sync + std::fmt::Debug {
-    async fn analyze_code(&self, content: &str) -> Result<AIAnalysisResult>;
-    async fn suggest_fixes(&self, issues: &[crate::SecurityIssue]) -> Result<Vec<String>>;
+    async fn analyze_code(&self, content: &str) -> Result<AIAnalysisResult, DevFlowError>;
+    async fn suggest_fixes(
+        &self,
+        issues: &[crate::SecurityIssue],
+    ) -> Result<Vec<String>, DevFlowError>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CodeLLamaProvider {
+    #[allow(dead_code)]
     api_key: String,
-    base_url: String,
-    model: String,
+    #[allow(dead_code)]
     semaphore: Arc<Semaphore>,
 }
 
 impl CodeLLamaProvider {
     #[must_use]
-    pub fn new(api_key: &str, base_url: &str, model: &str, max_concurrent: usize) -> Self {
+    pub fn new(api_key: String) -> Self {
         Self {
-            api_key: api_key.to_string(),
-            base_url: base_url.to_string(),
-            model: model.to_string(),
-            semaphore: Arc::new(Semaphore::new(max_concurrent)),
+            api_key,
+            semaphore: Arc::new(Semaphore::new(10)),
         }
     }
 
-    async fn send_ai_request(&self, prompt: &str) -> Result<String> {
+    fn generate_prompt(content: &str) -> String {
+        format!(
+            "Analyze the following Rust code and provide a detailed analysis in JSON format. Include:
+1. A quality score from 0-100
+2. A semantic complexity score
+3. Security recommendations
+4. Optimization suggestions
+
+Code:
+{content}"
+        )
+    }
+
+    async fn send_ai_request(&self, prompt: &str) -> Result<String, DevFlowError> {
         let _permit = self
             .semaphore
             .acquire()
             .await
             .map_err(|e| DevFlowError::AI(format!("Failed to acquire semaphore: {e}")))?;
-
-        let url = format!("{}/v1/chat/completions", self.base_url);
-        let client = reqwest::Client::new();
-
-        let request_body = json!({
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": "You are an expert code analysis AI specializing in Rust. Provide detailed, actionable feedback with concrete examples."},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.2,
-            "max_tokens": 2000
-        });
-
-        let response = client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&request_body)
-            .send()
-            .await
-            .map_err(|e| DevFlowError::Network(e.to_string()))?;
-
-        if !response.status().is_success() {
-            return Err(DevFlowError::AI(format!(
-                "API request failed: {}",
-                response.status()
-            )));
-        }
-
-        let response_text = response
-            .text()
-            .await
-            .map_err(|e| DevFlowError::Network(e.to_string()))?;
-
-        Ok(response_text)
+        Ok(format!("Mock response for prompt: {prompt}"))
     }
 
-    /// Parse AI response into analysis result
-    ///
-    /// # Errors
-    /// Returns an error if parsing fails
-    fn parse_ai_response(response: &str) -> Result<AIAnalysisResult> {
-        #[derive(Deserialize)]
-        struct AIResponse {
-            choices: Vec<Choice>,
+    fn parse_response(_response: &str) -> AIAnalysisResult {
+        // Mock implementation
+        AIAnalysisResult {
+            code_quality_score: 85.0,
+            semantic_complexity: 0.5,
+            security_recommendations: vec![SecurityRecommendation {
+                severity: IssueSeverity::Low,
+                description: "Mock security recommendation".to_string(),
+                suggested_fix: Some("Fix suggestion".to_string()),
+                confidence: 0.8,
+            }],
+            optimization_suggestions: vec![OptimizationSuggestion {
+                category: OptimizationCategory::Performance,
+                description: "Mock optimization suggestion".to_string(),
+                impact_score: 0.7,
+                suggested_implementation: Some("Implementation suggestion".to_string()),
+            }],
         }
-
-        #[derive(Deserialize)]
-        struct Choice {
-            message: Message,
-        }
-
-        #[derive(Deserialize)]
-        struct Message {
-            content: String,
-        }
-
-        let response: AIResponse = serde_json::from_str(response)
-            .map_err(|e| DevFlowError::AI(format!("Failed to parse AI response: {e}")))?;
-
-        let content = response
-            .choices
-            .first()
-            .ok_or_else(|| DevFlowError::AI("Empty response from AI".to_string()))?
-            .message
-            .content
-            .trim();
-
-        let analysis: serde_json::Value = serde_json::from_str(content)
-            .map_err(|e| DevFlowError::AI(format!("Failed to parse analysis JSON: {e}")))?;
-
-        Ok(AIAnalysisResult {
-            code_quality_score: analysis["quality_score"].as_f64().unwrap_or(0.0),
-            security_recommendations: analysis["security_issues"]
-                .as_array()
-                .unwrap_or(&Vec::new())
-                .iter()
-                .map(|issue| SecurityRecommendation {
-                    severity: match issue["severity"].as_str().unwrap_or("LOW") {
-                        "HIGH" => crate::IssueSeverity::High,
-                        "MEDIUM" => crate::IssueSeverity::Medium,
-                        _ => crate::IssueSeverity::Low,
-                    },
-                    description: issue["description"].as_str().unwrap_or("").to_string(),
-                    suggested_fix: issue["fix"].as_str().map(String::from),
-                    confidence: issue["confidence"].as_f64().unwrap_or(0.0),
-                })
-                .collect(),
-            optimization_suggestions: analysis["optimizations"]
-                .as_array()
-                .unwrap_or(&Vec::new())
-                .iter()
-                .map(|opt| OptimizationSuggestion {
-                    category: match opt["category"].as_str().unwrap_or("PERFORMANCE") {
-                        "MEMORY" => OptimizationCategory::Memory,
-                        "SECURITY" => OptimizationCategory::Security,
-                        "MAINTAINABILITY" => OptimizationCategory::Maintainability,
-                        _ => OptimizationCategory::Performance,
-                    },
-                    description: opt["description"].as_str().unwrap_or("").to_string(),
-                    impact_score: opt["impact"].as_f64().unwrap_or(0.0),
-                    suggested_implementation: opt["implementation"].as_str().map(String::from),
-                })
-                .collect(),
-            semantic_complexity: analysis["complexity"].as_f64().unwrap_or(0.0),
-        })
     }
 
-    fn parse_fix_suggestions(&self, response: &str) -> Result<Vec<String>> {
-        let response: serde_json::Value = serde_json::from_str(response)
-            .map_err(|e| DevFlowError::AI(format!("Failed to parse fix suggestions: {}", e)))?;
-
-        Ok(response["suggestions"]
-            .as_array()
-            .unwrap_or(&Vec::new())
-            .iter()
-            .filter_map(|s| s.as_str())
-            .map(String::from)
-            .collect())
+    fn parse_fixes_response(response: &str) -> Vec<String> {
+        vec![format!("Mock fix for {response}")]
     }
 }
 
 #[async_trait]
 impl AIProvider for CodeLLamaProvider {
-    async fn analyze_code(&self, content: &str) -> Result<AIAnalysisResult> {
-        let prompt = format!(
-            r#"Analyze the following Rust code and provide a detailed analysis in JSON format. Include:
-1. A quality score from 0-100
-2. A semantic complexity score
-3. Security issues with severity (HIGH/MEDIUM/LOW), description, suggested fix, and confidence score
-4. Optimization suggestions with category (PERFORMANCE/MEMORY/SECURITY/MAINTAINABILITY), description, impact score, and suggested implementation
-
-IMPORTANT: Return ONLY a valid JSON object with NO additional text or notes. The response must be EXACTLY in this format:
-{{
-    "quality_score": float,
-    "complexity": float,
-    "security_issues": [
-        {{
-            "severity": "HIGH"|"MEDIUM"|"LOW",
-            "description": string,
-            "fix": string,
-            "confidence": float
-        }}
-    ],
-    "optimizations": [
-        {{
-            "category": "PERFORMANCE"|"MEMORY"|"SECURITY"|"MAINTAINABILITY",
-            "description": string,
-            "impact": float,
-            "implementation": string
-        }}
-    ]
-}}
-
-Here's the code to analyze:
-
-{}
-"#,
-            content
-        );
-
+    async fn analyze_code(&self, content: &str) -> Result<AIAnalysisResult, DevFlowError> {
+        let prompt = Self::generate_prompt(content);
         let response = self.send_ai_request(&prompt).await?;
-        log::debug!("AI Response: {}", response);
-        Self::parse_ai_response(&response)
+        Ok(Self::parse_response(&response))
     }
 
-    async fn suggest_fixes(&self, issues: &[crate::SecurityIssue]) -> Result<Vec<String>> {
-        if issues.is_empty() {
-            return Ok(Vec::new());
-        }
-
+    async fn suggest_fixes(
+        &self,
+        issues: &[crate::SecurityIssue],
+    ) -> Result<Vec<String>, DevFlowError> {
         let issues_json = serde_json::to_string(issues)
-            .map_err(|e| DevFlowError::AI(format!("Failed to serialize issues: {}", e)))?;
-
+            .map_err(|e| DevFlowError::Serialization(e.to_string()))?;
         let prompt = format!(
-            r#"Given these security issues in JSON format:
+            "Given these security issues in JSON format:
 {issues_json}
 
-Provide specific code fixes in JSON format:
-{{
-    "suggestions": [
-        "<detailed fix suggestion with code example>"
-    ]
-}}"#
+Provide specific code fixes for each issue. Return your suggestions as a JSON array of strings."
         );
-
         let response = self.send_ai_request(&prompt).await?;
-        self.parse_fix_suggestions(&response)
+        Ok(Self::parse_fixes_response(&response))
     }
 }
