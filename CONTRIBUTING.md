@@ -53,7 +53,7 @@ This project and everyone participating in it is governed by our [Code of Conduc
    cargo fmt
    
    # Run the linter
-   cargo clippy -- -D warnings
+   cargo clippy  --all-targets  --all-features  --  -D warnings  -W clippy::pedantic  -W clippy::nursery
    
    # Build the project
    cargo build
@@ -62,7 +62,7 @@ This project and everyone participating in it is governed by our [Code of Conduc
    cargo test
    
    # Run DevFlow Pro own analysis
-   'cargo run' -- analyze ./src
+   cargo run -- analyze ./src
    ```
 3. Ensure all tests pass:
    - ✅ `cargo fmt` shows no formatting issues
