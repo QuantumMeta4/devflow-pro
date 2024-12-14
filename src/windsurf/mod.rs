@@ -18,20 +18,20 @@ pub struct Range {
     pub end: Position,
 }
 
-/// Configuration for Windsurf functionality.
+/// Configuration for the IDE integration.
 #[derive(Debug, Clone, Default)]
-pub struct WindsurfConfig {
+pub struct Config {
     pub real_time_enabled: bool,
 }
 
-/// Plugin for Windsurf functionality.
+/// Plugin for IDE integration.
 #[derive(Debug, Clone)]
-pub struct WindsurfPlugin {
+pub struct Plugin {
     pub name: String,
     pub version: String,
 }
 
-impl Default for WindsurfPlugin {
+impl Default for Plugin {
     fn default() -> Self {
         Self {
             name: "Windsurf".to_string(),
@@ -42,7 +42,7 @@ impl Default for WindsurfPlugin {
 
 /// Represents a file in the workspace.
 #[derive(Debug, Clone)]
-pub struct WorkspaceFile {
+pub struct File {
     pub path: PathBuf,
     pub content: String,
 }
@@ -56,7 +56,7 @@ pub struct TextChange {
 
 /// Represents a command in the IDE.
 #[derive(Debug, Clone)]
-pub struct CommandInfo {
+pub struct Command {
     pub id: String,
     pub title: String,
     pub description: Option<String>,
@@ -79,5 +79,5 @@ pub enum DiagnosticSeverity {
     Hint,
 }
 
-pub use interface::{IDEInterface, WindsurfIntegration};
-pub use mock::MockWindsurfIntegration;
+pub use interface::{Interface, WindsurfIntegration};
+pub use mock::MockIntegration;

@@ -56,7 +56,9 @@ impl WindsurfIDE {
     ///
     /// Returns an error if handling cursor movement fails.
     pub async fn handle_cursor_move(&self, position: Position) -> Result<()> {
-        self.context.handle_cursor_move(position).await
+        self.context
+            .handle_cursor_move(position.line, position.character)
+            .await
     }
 
     /// Handles visible range changes in the editor.

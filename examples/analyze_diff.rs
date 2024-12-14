@@ -1,6 +1,6 @@
 use devflow_pro::windsurf::{
     interface::{AnalysisContext, WindsurfIntegrationImpl},
-    WindsurfPlugin,
+    Plugin,
 };
 use std::{fs, path::PathBuf};
 
@@ -15,7 +15,7 @@ async fn main() -> anyhow::Result<()> {
     let file_path = PathBuf::from(&args[1]);
     let file_content = fs::read_to_string(&file_path)?;
 
-    let plugin = WindsurfPlugin::default();
+    let plugin = Plugin::default();
     let integration = WindsurfIntegrationImpl::new(plugin)?;
 
     let mut ctx = AnalysisContext {

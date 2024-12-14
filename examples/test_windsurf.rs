@@ -1,24 +1,22 @@
 use devflow_pro::windsurf::{
     interface::{AnalysisContext, WindsurfIntegrationImpl},
-    Position, WindsurfPlugin,
+    Plugin, Position,
 };
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let plugin = WindsurfPlugin::default();
-    let integration = WindsurfIntegrationImpl::new(plugin)?;
+    let integration = WindsurfIntegrationImpl::new(Plugin::default())?;
 
-    let code_content = r#"
-        fn main() {
-            let result = vec![1, 2, 3].iter().sum::<i32>();
-            println!("{}", result);
+    let test_code = r"
+        fn calculate_sum(numbers: &[i32]) -> i32 {
+            numbers.iter().sum()
         }
-    "#;
+    ";
 
     let mut context = AnalysisContext {
-        content: code_content.to_string(),
+        content: test_code.to_string(),
         position: Some(Position {
-            line: 0,
+            line: 1,
             character: 0,
         }),
         file_path: "test.rs".into(),
@@ -26,7 +24,5 @@ async fn main() -> anyhow::Result<()> {
     };
 
     integration.analyze(&mut context).await?;
-    println!("Analysis complete");
-
     Ok(())
 }

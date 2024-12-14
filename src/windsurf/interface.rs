@@ -1,3 +1,4 @@
+use super::{Config, Plugin};
 use crate::windsurf::{Position, Range};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -42,40 +43,51 @@ pub struct AnalysisContext {
 
 /// Interface for IDE functionality.
 #[async_trait]
-pub trait IDEInterface: Send + Sync {
+pub trait Interface: Send + Sync {
     /// Handles text changes in the editor.
     async fn handle_text_change(&self, content: &str) -> Result<()>;
 
     /// Handles cursor movement in the editor.
-    async fn handle_cursor_move(&self, position: Position) -> Result<()>;
+    async fn handle_cursor_move(&self, line: u32, character: u32) -> Result<()>;
 
-    /// Handles visible range changes in the editor.
-    async fn handle_visible_range_change(&self, range: Range) -> Result<()>;
+    /// Gets the current file path.
+    async fn get_current_file(&self) -> Result<Option<PathBuf>>;
+
+    /// Sets the current file path.
+    async fn set_current_file(&self, path: Option<PathBuf>) -> Result<()>;
+
+    /// Gets the current configuration.
+    async fn get_config(&self) -> Result<Config>;
+
+    /// Sets the current configuration.
+    async fn set_config(&self, config: Config) -> Result<()>;
+
+    /// Gets the plugin instance.
+    fn get_plugin(&self) -> &Plugin;
 
     /// Toggles real-time analysis.
     async fn toggle_real_time_analysis(&self) -> Result<()>;
 
-    /// Get the current plugin instance.
-    #[must_use]
-    fn get_plugin(&self) -> &super::WindsurfPlugin;
+    /// Handles visible range changes in the editor.
+    async fn handle_visible_range_change(&self, range: Range) -> Result<()>;
 }
 
 /// Windsurf integration trait.
 #[async_trait]
-pub trait WindsurfIntegration: IDEInterface {
+pub trait WindsurfIntegration: Interface {
     /// Initializes the Windsurf integration.
     async fn initialize(&self) -> Result<()>;
 }
 
 /// Windsurf IDE integration implementation.
 pub struct WindsurfIntegrationImpl {
-    pub config: Mutex<super::WindsurfConfig>,
+    pub config: Mutex<Config>,
     pub current_file: Mutex<Option<PathBuf>>,
-    plugin: super::WindsurfPlugin,
+    plugin: Plugin,
 }
 
 #[async_trait]
-impl IDEInterface for WindsurfIntegrationImpl {
+impl Interface for WindsurfIntegrationImpl {
     async fn handle_text_change(&self, content: &str) -> Result<()> {
         let file_path = self
             .current_file
@@ -94,7 +106,7 @@ impl IDEInterface for WindsurfIntegrationImpl {
         self.analyze(&mut analysis_ctx).await
     }
 
-    async fn handle_cursor_move(&self, position: Position) -> Result<()> {
+    async fn handle_cursor_move(&self, line: u32, character: u32) -> Result<()> {
         let file_path = self
             .current_file
             .lock()
@@ -105,11 +117,40 @@ impl IDEInterface for WindsurfIntegrationImpl {
         let mut analysis_ctx = AnalysisContext {
             file_path,
             content: String::new(),
-            position: Some(position),
+            position: Some(Position { line, character }),
             visible_range: None,
         };
 
         self.analyze(&mut analysis_ctx).await
+    }
+
+    async fn get_current_file(&self) -> Result<Option<PathBuf>> {
+        Ok(self.current_file.lock().await.clone())
+    }
+
+    async fn set_current_file(&self, path: Option<PathBuf>) -> Result<()> {
+        *self.current_file.lock().await = path;
+        Ok(())
+    }
+
+    async fn get_config(&self) -> Result<Config> {
+        Ok(self.config.lock().await.clone())
+    }
+
+    async fn set_config(&self, config: Config) -> Result<()> {
+        *self.config.lock().await = config;
+        Ok(())
+    }
+
+    fn get_plugin(&self) -> &Plugin {
+        &self.plugin
+    }
+
+    async fn toggle_real_time_analysis(&self) -> Result<()> {
+        let mut config = self.config.lock().await;
+        config.real_time_enabled = !config.real_time_enabled;
+        drop(config);
+        Ok(())
     }
 
     async fn handle_visible_range_change(&self, range: Range) -> Result<()> {
@@ -129,17 +170,6 @@ impl IDEInterface for WindsurfIntegrationImpl {
 
         self.analyze(&mut analysis_ctx).await
     }
-
-    async fn toggle_real_time_analysis(&self) -> Result<()> {
-        let mut config = self.config.lock().await;
-        config.real_time_enabled = !config.real_time_enabled;
-        drop(config);
-        Ok(())
-    }
-
-    fn get_plugin(&self) -> &super::WindsurfPlugin {
-        &self.plugin
-    }
 }
 
 #[async_trait]
@@ -156,9 +186,9 @@ impl WindsurfIntegrationImpl {
     /// # Errors
     ///
     /// Returns an error if initialization fails.
-    pub fn new(plugin: super::WindsurfPlugin) -> Result<Self> {
+    pub fn new(plugin: Plugin) -> Result<Self> {
         Ok(Self {
-            config: Mutex::new(super::WindsurfConfig::default()),
+            config: Mutex::new(Config::default()),
             current_file: Mutex::new(None),
             plugin,
         })

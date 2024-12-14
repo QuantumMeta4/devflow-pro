@@ -1,70 +1,109 @@
-use anyhow::Result;
-use async_trait::async_trait;
 use devflow_pro::windsurf::{
-    interface::{AnalysisContext, IDEInterface},
-    Position, Range, WindsurfPlugin,
+    interface::{AnalysisContext, Interface},
+    Config, Plugin, Position, Range,
 };
+use std::path::PathBuf;
+use std::sync::Mutex;
 
 struct TestIntegration {
-    plugin: WindsurfPlugin,
+    plugin: Plugin,
+    config: Mutex<Config>,
+    current_file: Mutex<Option<PathBuf>>,
 }
 
 impl TestIntegration {
     fn new() -> Self {
         Self {
-            plugin: WindsurfPlugin::default(),
+            plugin: Plugin::default(),
+            config: Mutex::new(Config::default()),
+            current_file: Mutex::new(None),
         }
     }
 }
 
-#[async_trait]
-impl IDEInterface for TestIntegration {
-    async fn handle_text_change(&self, content: &str) -> Result<()> {
+#[async_trait::async_trait]
+impl Interface for TestIntegration {
+    async fn handle_text_change(&self, content: &str) -> anyhow::Result<()> {
         println!("Handling text change: {content}");
         Ok(())
     }
 
-    async fn handle_cursor_move(&self, position: Position) -> Result<()> {
-        println!("Handling cursor move: {position:?}");
+    async fn handle_cursor_move(&self, line: u32, character: u32) -> anyhow::Result<()> {
+        println!("Handling cursor move: ({line}, {character})");
         Ok(())
     }
 
-    async fn handle_visible_range_change(&self, range: Range) -> Result<()> {
+    async fn handle_visible_range_change(&self, range: Range) -> anyhow::Result<()> {
         println!("Handling visible range change: {range:?}");
         Ok(())
     }
 
-    async fn toggle_real_time_analysis(&self) -> Result<()> {
-        println!("Toggling real-time analysis");
+    fn get_plugin(&self) -> &Plugin {
+        &self.plugin
+    }
+
+    async fn get_current_file(&self) -> anyhow::Result<Option<PathBuf>> {
+        Ok(self.current_file.lock().unwrap().clone())
+    }
+
+    async fn set_current_file(&self, path: Option<PathBuf>) -> anyhow::Result<()> {
+        *self.current_file.lock().unwrap() = path;
         Ok(())
     }
 
-    fn get_plugin(&self) -> &WindsurfPlugin {
-        &self.plugin
+    async fn get_config(&self) -> anyhow::Result<Config> {
+        Ok(self.config.lock().unwrap().clone())
+    }
+
+    async fn set_config(&self, config: Config) -> anyhow::Result<()> {
+        *self.config.lock().unwrap() = config;
+        Ok(())
+    }
+
+    async fn toggle_real_time_analysis(&self) -> anyhow::Result<()> {
+        println!("Toggling real-time analysis");
+        Ok(())
     }
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> anyhow::Result<()> {
     let integration = TestIntegration::new();
 
-    let analysis_ctx = AnalysisContext {
-        content: String::from("fn main() {}"),
+    let test_code = r"
+        fn calculate_sum(numbers: &[i32]) -> i32 {
+            numbers.iter().sum()
+        }
+    ";
+
+    let context = AnalysisContext {
+        content: test_code.to_string(),
         position: Some(Position {
-            line: 0,
+            line: 1,
             character: 0,
         }),
         file_path: "test.rs".into(),
-        visible_range: None,
+        visible_range: Some(Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 4,
+                character: 0,
+            },
+        }),
     };
 
-    println!("Analysis context: {analysis_ctx:?}");
-    integration
-        .handle_text_change(&analysis_ctx.content)
-        .await?;
-    integration
-        .handle_cursor_move(analysis_ctx.position.unwrap())
-        .await?;
+    integration.handle_text_change(&context.content).await?;
+    if let Some(pos) = context.position {
+        integration
+            .handle_cursor_move(pos.line, pos.character)
+            .await?;
+    }
+    if let Some(range) = context.visible_range {
+        integration.handle_visible_range_change(range).await?;
+    }
 
     Ok(())
 }

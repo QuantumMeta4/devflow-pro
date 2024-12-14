@@ -2,13 +2,13 @@
 mod tests {
     use devflow_pro::windsurf::{
         interface::{AnalysisContext, WindsurfIntegrationImpl},
-        WindsurfPlugin,
+        Plugin,
     };
     use std::error::Error;
 
     #[tokio::test]
     async fn test_plugin_analysis() -> Result<(), Box<dyn Error>> {
-        let integration = WindsurfIntegrationImpl::new(WindsurfPlugin::default())?;
+        let integration = WindsurfIntegrationImpl::new(Plugin::default())?;
 
         let test_code = r"
             fn calculate_sum(numbers: &[i32]) -> i32 {

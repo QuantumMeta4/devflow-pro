@@ -1,31 +1,37 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use devflow_pro::windsurf::{
-    interface::{AnalysisContext, IDEInterface, WindsurfIntegration},
-    Position, Range, WindsurfPlugin,
+    interface::{AnalysisContext, Interface, WindsurfIntegration},
+    Config, Plugin, Position, Range,
 };
+use std::path::PathBuf;
+use std::sync::Mutex;
 
 struct TestIntegration {
-    plugin: WindsurfPlugin,
+    plugin: Plugin,
+    config: Mutex<Config>,
+    current_file: Mutex<Option<PathBuf>>,
 }
 
 impl TestIntegration {
     fn new() -> Self {
         Self {
-            plugin: WindsurfPlugin::default(),
+            plugin: Plugin::default(),
+            config: Mutex::new(Config::default()),
+            current_file: Mutex::new(None),
         }
     }
 }
 
 #[async_trait]
-impl IDEInterface for TestIntegration {
+impl Interface for TestIntegration {
     async fn handle_text_change(&self, content: &str) -> Result<()> {
         println!("Handling text change: {content}");
         Ok(())
     }
 
-    async fn handle_cursor_move(&self, position: Position) -> Result<()> {
-        println!("Handling cursor move: {position:?}");
+    async fn handle_cursor_move(&self, line: u32, character: u32) -> Result<()> {
+        println!("Handling cursor move: line {line}, character {character}");
         Ok(())
     }
 
@@ -39,8 +45,26 @@ impl IDEInterface for TestIntegration {
         Ok(())
     }
 
-    fn get_plugin(&self) -> &WindsurfPlugin {
+    fn get_plugin(&self) -> &Plugin {
         &self.plugin
+    }
+
+    async fn get_current_file(&self) -> Result<Option<PathBuf>> {
+        Ok(self.current_file.lock().unwrap().clone())
+    }
+
+    async fn set_current_file(&self, path: Option<PathBuf>) -> Result<()> {
+        *self.current_file.lock().unwrap() = path;
+        Ok(())
+    }
+
+    async fn get_config(&self) -> Result<Config> {
+        Ok(self.config.lock().unwrap().clone())
+    }
+
+    async fn set_config(&self, config: Config) -> Result<()> {
+        *self.config.lock().unwrap() = config;
+        Ok(())
     }
 }
 
@@ -57,10 +81,16 @@ async fn test_integration() -> Result<()> {
     let integration = TestIntegration::new();
     integration.initialize().await?;
 
+    let test_code = r"
+        fn calculate_sum(numbers: &[i32]) -> i32 {
+            numbers.iter().sum()
+        }
+    ";
+
     let context = AnalysisContext {
-        content: String::from("fn main() {}"),
+        content: test_code.to_string(),
         position: Some(Position {
-            line: 0,
+            line: 1,
             character: 0,
         }),
         file_path: "test.rs".into(),
@@ -68,9 +98,11 @@ async fn test_integration() -> Result<()> {
     };
 
     integration.handle_text_change(&context.content).await?;
-    integration
-        .handle_cursor_move(context.position.unwrap())
-        .await?;
+    if let Some(pos) = context.position {
+        integration
+            .handle_cursor_move(pos.line, pos.character)
+            .await?;
+    }
 
     Ok(())
 }
