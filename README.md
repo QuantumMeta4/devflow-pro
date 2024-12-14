@@ -1,10 +1,15 @@
 # DevFlow Pro: Multi-Language Static AI Code Analysis Toolkit 🔍🛡️
 
 ![Build Status](https://github.com/QuantumMeta4/devflow-pro/actions/workflows/rust.yml/badge.svg)
-![Version](https://img.shields.io/badge/version-1.1.0-blue)
-![License](https://img.shields.io/badge/License-MIT-yellow)
-![Rust Version](https://img.shields.io/badge/rust-1.70%2B-orange)
-![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)
+![Version](https://img.shields.io/github/v/release/QuantumMeta4/devflow-pro?label=version)
+![License](https://img.shields.io/github/license/QuantumMeta4/devflow-pro)
+![Rust Version](https://img.shields.io/github/actions/workflow/status/QuantumMeta4/devflow-pro/rust.yml?label=rust&logo=rust)
+![PRs Welcome](https://img.shields.io/github/issues-pr-raw/QuantumMeta4/devflow-pro?label=PRs%20welcome)
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/QuantumMeta4/devflow-pro?label=latest%20release)
+![GitHub issues](https://img.shields.io/github/issues/QuantumMeta4/devflow-pro)
+![GitHub pull requests](https://img.shields.io/github/issues-pr/QuantumMeta4/devflow-pro)
+![GitHub last commit](https://img.shields.io/github/last-commit/QuantumMeta4/devflow-pro)
+![GitHub Repo stars](https://img.shields.io/github/stars/QuantumMeta4/devflow-pro?style=social)
 
 ## 🌟 Overview
 
@@ -142,6 +147,95 @@ devflow-pro docs ./src --update --verbose
 // Get real-time suggestions
 "What improvements can be made at line 42?"
 "Suggest optimizations for this function"
+```
+
+### 🤖 Using DevFlow Pro with Cascade AI Agent Workflow
+
+DevFlow Pro can be seamlessly integrated with Cascade AI for enhanced code analysis. Here's how to use it:
+
+#### Basic Usage with Cascade AI
+```bash
+# Basic analysis with AI integration
+env TOGETHER_API_KEY=<your-api-key> devflow-pro --path /path/to/project --ai --verbose --format text --output stdout
+
+# Example with all options
+env TOGETHER_API_KEY=<your-api-key> devflow-pro \
+  --path /path/to/project \
+  --ai \
+  --verbose \
+  --format text \
+  --output stdout \
+  --security-patterns "unwrap,panic,unsafe" \
+  --ignore "target/*,*.bak" \
+  --max-file-size 1000000
+```
+
+#### Advanced Features in Cascade AI Workflow
+
+1. **AI-Enhanced Security Analysis**
+```bash
+# Security-focused analysis
+env TOGETHER_API_KEY=<your-api-key> devflow-pro \
+  --path /path/to/project \
+  --ai \
+  --security-patterns "sql_injection,xss,csrf" \
+  --format json \
+  --output security_report.json
+```
+
+2. **Performance Analysis with AI**
+```bash
+# Performance optimization analysis
+env TOGETHER_API_KEY=<your-api-key> devflow-pro \
+  --path /path/to/project \
+  --ai \
+  --focus performance \
+  --verbose \
+  --output perf_report.txt
+```
+
+3. **Code Quality Assessment**
+```bash
+# Code quality analysis
+env TOGETHER_API_KEY=<your-api-key> devflow-pro \
+  --path /path/to/project \
+  --ai \
+  --focus quality \
+  --format markdown \
+  --output quality_report.md
+```
+
+4. **Documentation Generation**
+```bash
+# Generate AI-enhanced documentation
+env TOGETHER_API_KEY=<your-api-key> devflow-pro \
+  --path /path/to/project \
+  --ai \
+  --focus docs \
+  --output ./docs
+```
+
+#### Integration with Other Tools
+
+1. **CI/CD Pipeline Integration**
+```yaml
+# GitHub Actions example
+steps:
+  - name: Run DevFlow Pro Analysis
+    env:
+      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+    run: |
+      devflow-pro --path . --ai --verbose --format json --output analysis.json
+```
+
+2. **Pre-commit Hook**
+```bash
+#!/bin/bash
+env TOGETHER_API_KEY=<your-api-key> devflow-pro \
+  --path . \
+  --ai \
+  --focus security,quality \
+  --format text
 ```
 
 ### 🤖 Using DevFlow Pro with Cascade AI in Windsurf IDE
@@ -322,9 +416,9 @@ In Windsurf IDE, you can interact with Cascade AI using natural language:
 "Review my PR changes"
 ```
 
-### 🤖 Cascade AI Integration
+### 🤖 Windsurf and Cascade AI Integration
 
-Cascade AI is powered by Together.xyz's CodeLlama model with the integration of DevFlow Pro using Together.xyz's API and CodeLlama, providing intelligent code analysis and suggestions.
+DevFlow Pro is powered by Together.xyz's CodeLlama model, and integrates direct with Windsurf IDE. This integration allows you to use DevFlow Pro through the Cascade AI assistant and as a extension. This integration provides a seamless experience with a custom DevFlow Pro environment for the Windsurf IDE and Cascade AI agent workflow. This provides intelligent code analysis, efficienct Cascade usage, and CodeLlama enhanced integretion with whichever agent is currently active.
 
 #### Features
 - **Semantic Code Understanding**: Analyzes code context and purpose
@@ -363,7 +457,7 @@ performance_threshold = 0.9
 devflow-pro analyze ./src
 
 # Detailed analysis with AI insights
-devflow-pro analyze ./src --ai --verbose
+devflow-pro analyze ./src --ai --verbose --format text --output stdout
 
 # Security-focused analysis
 devflow-pro analyze ./src --security-level high
@@ -382,30 +476,45 @@ required_docs = true
 security_checks = ["sql-injection", "xss", "csrf"]
 ```
 
-### 🔄 Development Workflow
+### 🚀 Advanced Features
 
-1. **Analysis**
-   ```bash
-   # Before making changes
-   devflow-pro analyze ./src
-   ```
+#### 1. Custom Analysis Rules
+```toml
+# .devflow/rules.toml
+[rules]
+max_complexity = 10
+min_coverage = 80
+banned_functions = ["unsafe_operation", "deprecated_api"]
 
-2. **Implementation**
-   - Use Windsurf IDE with Cascade AI
-   - Follow real-time suggestions
-   - Address security concerns early
+[security]
+severity_threshold = "high"
+scan_dependencies = true
 
-3. **Testing**
-   ```bash
-   # Run tests with AI assistance
-   devflow-pro test --ai
-   ```
+[performance]
+memory_threshold = "100MB"
+cpu_threshold = "50%"
+```
 
-4. **Review**
-   ```bash
-   # Get AI review of changes
-   devflow-pro review --diff
-   ```
+#### 2. Analysis Profiles
+```bash
+# Development profile
+devflow-pro --profile dev --quick-scan
+
+# Production profile
+devflow-pro --profile prod --deep-scan
+
+# Custom profile
+devflow-pro --profile custom --config my-rules.toml
+```
+
+#### 3. Plugin System
+```rust
+// Custom plugin example
+#[devflow_plugin]
+fn custom_analyzer(code: &str) -> Analysis {
+    // Custom analysis logic
+}
+```
 
 ### 🛠️ Contributing
 
