@@ -1,56 +1,85 @@
-use std::fs;
+use anyhow::{Context, Result};
 use std::path::PathBuf;
 
-// Function with several code quality and security issues
-pub fn process_user_data(user_input: &str) -> Result<String, Box<dyn std::error::Error>> {
-    // Security issue: Directly using unwrap
+/// Process user data and return a formatted string.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The input is empty
+/// - The file does not exist
+/// - Failed to read from or write to files
+pub fn process_user_data(user_input: &str) -> Result<String> {
     let path = PathBuf::from("user_data.txt");
     if !path.exists() {
-        return Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "File not found",
-        )));
-    }
-    let data = fs::read_to_string(path)?;
-
-    // Performance issue: Unnecessary string allocation
-    let mut result = String::from("");
-
-    // Security issue: No input validation
-    if user_input.len() > 0 {
-        // Performance issue: Inefficient string concatenation
-        result = result + &data + user_input;
+        return Err(anyhow::anyhow!("File not found"));
     }
 
-    // Security issue: Writing to file without proper error handling
+    let _content = std::fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read file: {}", path.display()))?;
+
+    let mut result = String::new();
+
+    if user_input.is_empty() {
+        return Err(anyhow::anyhow!("Empty input"));
+    }
+    result.push_str("Processed: ");
+    result.push_str(user_input);
+
     let output_path = PathBuf::from("output.txt");
-    fs::write(output_path, &result)?;
+    std::fs::write(&output_path, &result)
+        .with_context(|| format!("Failed to write to file: {}", output_path.display()))?;
 
-    // Performance issue: Unnecessary clone
-    Ok(result.clone())
+    Ok(result)
 }
 
-// Function with potential memory issues
-pub fn process_large_data(data: Vec<String>) -> Vec<String> {
-    // Performance issue: Multiple allocations
-    let mut results = Vec::new();
-
-    for item in data {
-        // Memory issue: Growing vector without capacity
-        results.push(item.to_uppercase());
+/// Process a string input and return a formatted string.
+///
+/// # Errors
+///
+/// Returns an error if the input is empty.
+pub fn process_input(input: &str) -> Result<String> {
+    if input.is_empty() {
+        return Err(anyhow::anyhow!("Empty input"));
     }
-
-    results
+    let mut result = String::from("Processed: ");
+    result.push_str(input);
+    Ok(result)
 }
 
-fn main() {
-    let test_input = "test data";
-    match process_user_data(test_input) {
-        Ok(result) => println!("Success: {}", result),
-        Err(e) => eprintln!("Error: {}", e),
-    }
+/// Analyze a file and return its processed contents.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Failed to read the file
+/// - The file contents are empty
+pub fn analyze_file(path: &PathBuf) -> Result<String> {
+    let content = std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read file: {}", path.display()))?;
+    process_input(&content)
+}
 
-    let test_data = vec!["hello".to_string(), "world".to_string()];
-    let processed = process_large_data(test_data);
-    println!("Processed: {:?}", processed);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_process_input() {
+        let result = process_input("test").unwrap();
+        assert_eq!(result, "Processed: test");
+
+        let empty_result = process_input("");
+        assert!(empty_result.is_err());
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let path = PathBuf::from("examples/test_analysis.rs");
+    let user_input = std::fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read file: {}", path.display()))?;
+    let processed = process_input(&user_input)?;
+    println!("{processed}");
+    Ok(())
 }

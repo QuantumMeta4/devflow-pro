@@ -1,127 +1,145 @@
-use crate::ai_enhanced::{
-    AIAnalysisResult, AIProvider, OptimizationCategory, OptimizationSuggestion,
-    SecurityRecommendation,
+use crate::{
+    ai_enhanced::{
+        AIAnalysisResult, AIProvider, OptimizationCategory, OptimizationSuggestion,
+        SecurityRecommendation,
+    },
+    windsurf::{
+        interface::{IDEInterface, WindsurfIntegration},
+        Position, Range, WindsurfPlugin,
+    },
+    DevFlowError, IssueSeverity, SecurityIssue,
 };
-use crate::{IssueSeverity, Result, SecurityIssue};
+use anyhow::Result;
 use async_trait::async_trait;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
-/// AI provider implementation for testing purposes
+/// Mock implementation of `WindsurfIntegration` for testing.
+#[derive(Debug)]
+pub struct MockWindsurfIntegration {
+    text_changes: Arc<Mutex<Vec<String>>>,
+    cursor_moves: Arc<Mutex<Vec<Position>>>,
+    visible_ranges: Arc<Mutex<Vec<Range>>>,
+    real_time_enabled: Arc<Mutex<bool>>,
+    plugin: WindsurfPlugin,
+}
+
+impl MockWindsurfIntegration {
+    /// Creates a new mock integration instance.
+    #[must_use]
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            text_changes: Arc::new(Mutex::new(Vec::new())),
+            cursor_moves: Arc::new(Mutex::new(Vec::new())),
+            visible_ranges: Arc::new(Mutex::new(Vec::new())),
+            real_time_enabled: Arc::new(Mutex::new(true)),
+            plugin: WindsurfPlugin {
+                name: "Mock Windsurf".to_string(),
+                version: "0.1.0".to_string(),
+            },
+        })
+    }
+
+    /// Gets the recorded text changes.
+    pub async fn get_text_changes(&self) -> Vec<String> {
+        self.text_changes.lock().await.clone()
+    }
+
+    /// Gets the recorded cursor moves.
+    pub async fn get_cursor_moves(&self) -> Vec<Position> {
+        self.cursor_moves.lock().await.clone()
+    }
+
+    /// Gets the recorded visible ranges.
+    pub async fn get_visible_ranges(&self) -> Vec<Range> {
+        self.visible_ranges.lock().await.clone()
+    }
+}
+
+#[async_trait]
+impl IDEInterface for MockWindsurfIntegration {
+    async fn handle_text_change(&self, content: &str) -> Result<()> {
+        self.text_changes.lock().await.push(content.to_string());
+        Ok(())
+    }
+
+    async fn handle_cursor_move(&self, position: Position) -> Result<()> {
+        self.cursor_moves.lock().await.push(position);
+        Ok(())
+    }
+
+    async fn handle_visible_range_change(&self, range: Range) -> Result<()> {
+        self.visible_ranges.lock().await.push(range);
+        Ok(())
+    }
+
+    async fn toggle_real_time_analysis(&self) -> Result<()> {
+        let mut enabled = self.real_time_enabled.lock().await;
+        *enabled = !*enabled;
+        drop(enabled);
+        Ok(())
+    }
+
+    fn get_plugin(&self) -> &WindsurfPlugin {
+        &self.plugin
+    }
+}
+
+#[async_trait]
+impl WindsurfIntegration for MockWindsurfIntegration {
+    async fn initialize(&self) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// Test provider for mock implementations.
 #[derive(Debug)]
 pub struct TestProvider;
 
 impl TestProvider {
-    /// Creates a new test provider instance.
-    #[must_use]
-    pub const fn new() -> Self {
-        Self
+    #[allow(clippy::cast_precision_loss)]
+    fn calculate_quality_score(content: &str) -> f64 {
+        content.len() as f64 * 0.1
     }
-}
 
-impl Default for TestProvider {
-    fn default() -> Self {
-        Self::new()
+    fn generate_security_recommendations(content: &str) -> Vec<SecurityRecommendation> {
+        vec![SecurityRecommendation {
+            severity: IssueSeverity::Low,
+            description: format!(
+                "Mock security recommendation for {} bytes of code",
+                content.len()
+            ),
+            suggested_fix: Some("Fix suggestion".to_string()),
+            confidence: 0.8,
+        }]
+    }
+
+    fn generate_optimization_suggestions(content: &str) -> Vec<OptimizationSuggestion> {
+        vec![OptimizationSuggestion {
+            category: OptimizationCategory::Performance,
+            description: format!(
+                "Mock optimization suggestion for {} bytes of code",
+                content.len()
+            ),
+            impact_score: 0.7,
+            suggested_implementation: Some("Implementation suggestion".to_string()),
+        }]
     }
 }
 
 #[async_trait]
 impl AIProvider for TestProvider {
-    async fn analyze_code(&self, content: &str) -> Result<AIAnalysisResult> {
+    async fn analyze_code(&self, content: &str) -> Result<AIAnalysisResult, DevFlowError> {
         Ok(AIAnalysisResult {
-            code_quality_score: Self::analyze_code_quality(content),
+            code_quality_score: Self::calculate_quality_score(content),
+            #[allow(clippy::cast_precision_loss)]
+            semantic_complexity: (content.lines().count() as f64) * 0.1,
             security_recommendations: Self::generate_security_recommendations(content),
             optimization_suggestions: Self::generate_optimization_suggestions(content),
-            semantic_complexity: content.lines().count() as f64 * 0.1,
         })
     }
 
-    async fn suggest_fixes(&self, issues: &[SecurityIssue]) -> Result<Vec<String>> {
-        Ok(issues
-            .iter()
-            .map(|issue| {
-                format!(
-                    "Fix for {:?} severity issue: {}",
-                    issue.severity, issue.description
-                )
-            })
-            .collect())
-    }
-}
-
-impl TestProvider {
-    fn analyze_code_quality(code: &str) -> f64 {
-        let lines: Vec<&str> = code.lines().collect();
-        let total_lines = lines.len() as f32;
-
-        if total_lines == 0.0 {
-            return 0.0;
-        }
-
-        let comment_lines = lines.iter().filter(|l| l.trim().starts_with("//")).count() as f32;
-        let long_lines = lines.iter().filter(|l| l.len() > 100).count() as f32;
-        let empty_lines = lines.iter().filter(|l| l.trim().is_empty()).count() as f32;
-
-        let comment_ratio = comment_lines / total_lines;
-        let long_lines_ratio = long_lines / total_lines;
-        let empty_lines_ratio = empty_lines / total_lines;
-
-        let quality_score = 100.0
-            * (
-                0.4 * (1.0 - long_lines_ratio) +  // Prefer shorter lines
-            0.4 * comment_ratio +              // More comments is better
-            0.2 * (1.0 - empty_lines_ratio)
-                // Some empty lines are good, but not too many
-            );
-
-        quality_score as f64
-    }
-
-    fn generate_security_recommendations(code: &str) -> Vec<SecurityRecommendation> {
-        let mut recommendations = Vec::new();
-
-        // Simple pattern matching for common security issues
-        if code.contains("unsafe") {
-            recommendations.push(SecurityRecommendation {
-                severity: IssueSeverity::High,
-                description: "Use of unsafe block detected".to_string(),
-                suggested_fix: Some("Consider using safe alternatives".to_string()),
-                confidence: 0.9,
-            });
-        }
-
-        if code.contains("unwrap") {
-            recommendations.push(SecurityRecommendation {
-                severity: IssueSeverity::Medium,
-                description: "Use of unwrap() detected".to_string(),
-                suggested_fix: Some("Handle errors explicitly".to_string()),
-                confidence: 0.8,
-            });
-        }
-
-        recommendations
-    }
-
-    fn generate_optimization_suggestions(code: &str) -> Vec<OptimizationSuggestion> {
-        let mut suggestions = Vec::new();
-
-        // Simple pattern matching for common optimization opportunities
-        if code.contains("clone") {
-            suggestions.push(OptimizationSuggestion {
-                category: OptimizationCategory::Performance,
-                description: "Unnecessary clone detected".to_string(),
-                impact_score: 0.5,
-                suggested_implementation: Some("Consider using references".to_string()),
-            });
-        }
-
-        if code.contains("Vec::new") {
-            suggestions.push(OptimizationSuggestion {
-                category: OptimizationCategory::Memory,
-                description: "Vec allocation without capacity".to_string(),
-                impact_score: 0.3,
-                suggested_implementation: Some("Consider using Vec::with_capacity".to_string()),
-            });
-        }
-
-        suggestions
+    async fn suggest_fixes(&self, issues: &[SecurityIssue]) -> Result<Vec<String>, DevFlowError> {
+        Ok(issues.iter().map(|i| format!("Fix for {i:?}")).collect())
     }
 }

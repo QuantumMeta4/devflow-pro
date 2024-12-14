@@ -78,16 +78,14 @@ impl Pipeline {
     /// # Panics
     ///
     /// This function will panic if the `TOGETHER_API_KEY` environment variable is not set.
+    #[must_use = "This function returns a new Pipeline instance that should be used"]
     pub fn new() -> Self {
         Self {
             cache: Arc::new(DashMap::new()),
             stats: Arc::new(RwLock::new(Stats::default())),
             ai_provider: Arc::new(Box::new(CodeLLamaProvider::new(
-                &std::env::var("TOGETHER_API_KEY")
+                std::env::var("TOGETHER_API_KEY")
                     .expect("TOGETHER_API_KEY environment variable must be set"),
-                "https://api.together.xyz/v1",
-                "codellama/CodeLlama-34b-Instruct-hf",
-                10,
             ))),
         }
     }

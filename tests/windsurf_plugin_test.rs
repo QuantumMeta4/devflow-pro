@@ -1,37 +1,29 @@
-use devflow_pro::{
-    windsurf::{AnalysisContext, IDEInterface, Position, WindsurfIntegration, WindsurfPlugin},
-    Result,
-};
-use std::path::PathBuf;
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use devflow_pro::windsurf::{
+        interface::{AnalysisContext, WindsurfIntegrationImpl},
+        WindsurfPlugin,
+    };
+    use std::error::Error;
 
     #[tokio::test]
-    async fn test_windsurf_plugin() -> Result<()> {
-        let plugin = WindsurfPlugin::new(None).await?;
-        let integration = WindsurfIntegration::new_with_plugin(plugin).await?;
+    async fn test_plugin_analysis() -> Result<(), Box<dyn Error>> {
+        let integration = WindsurfIntegrationImpl::new(WindsurfPlugin::default())?;
 
-        let context = AnalysisContext {
-            code_content: String::from("fn main() {}"),
-            file_path: PathBuf::from("test.rs").to_string_lossy().into_owned(),
-            cursor_position: Some(0),
+        let test_code = r"
+            fn calculate_sum(numbers: &[i32]) -> i32 {
+                numbers.iter().sum()
+            }
+        ";
+
+        let mut context = AnalysisContext {
+            content: test_code.to_string(),
+            position: None,
+            file_path: "test.rs".into(),
             visible_range: None,
-            language: "rust".to_string(),
         };
 
-        integration
-            .handle_text_change(context.code_content.clone())
-            .await?;
-        integration
-            .handle_cursor_move(Position {
-                line: 0,
-                column: 0,
-                offset: 0,
-            })
-            .await?;
-
+        integration.analyze(&mut context).await?;
         Ok(())
     }
 }
