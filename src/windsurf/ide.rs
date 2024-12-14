@@ -1,7 +1,6 @@
-use super::{IDEInterface, Position, Range};
+use super::{Arc, IDEInterface, Position, Range};
 use crate::Result;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -12,20 +11,26 @@ pub struct StatusBarItem {
     pub command: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-pub struct IDEContext {
-    pub status_bar: Arc<Mutex<Vec<StatusBarItem>>>,
-    pub windsurf: Arc<dyn IDEInterface>,
+#[derive(Debug)]
+pub struct IDE {
+    status_bar: Mutex<Vec<StatusBarItem>>,
+    windsurf: Arc<dyn IDEInterface>,
 }
 
-impl IDEContext {
+impl IDE {
+    #[must_use]
     pub fn new(windsurf: Arc<dyn IDEInterface>) -> Self {
         Self {
-            status_bar: Arc::new(Mutex::new(Vec::new())),
+            status_bar: Mutex::new(Vec::new()),
             windsurf,
         }
     }
 
+    /// Updates the status bar with the given text and optional tooltip.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the status bar update fails or if the mutex lock cannot be acquired.
     pub async fn update_status_bar(
         &self,
         id: &str,
@@ -44,55 +49,62 @@ impl IDEContext {
                 command: Some("windsurf.showMetricsDetails".to_string()),
             });
         }
+        drop(status_bar);
         Ok(())
     }
 
+    /// Handles text changes in the editor.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the text change cannot be processed.
     pub async fn handle_text_change(&self, text: String) -> Result<()> {
-        // Forward to Windsurf interface
-        self.windsurf.handle_text_change(text).await?;
-
-        // Get updated metrics
-        let metrics_text = self.windsurf.get_plugin().get_status_bar_text().await?;
-
-        // Update status bar
-        self.update_status_bar(
-            "windsurf.metrics",
-            metrics_text.clone(),
-            Some("Click for detailed metrics".to_string()),
-        )
-        .await?;
-
-        Ok(())
+        self.windsurf.handle_text_change(text).await
     }
 
+    /// Handles cursor movement in the editor.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the cursor position cannot be updated.
     pub async fn handle_cursor_move(&self, position: Position) -> Result<()> {
         self.windsurf.handle_cursor_move(position).await
     }
 
-    pub async fn handle_visible_range_change(&self, _range: Range) -> Result<()> {
-        // Store visible range for context-aware analysis
-        Ok(())
+    /// Handles visible range changes in the editor.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the visible range cannot be updated.
+    pub async fn handle_visible_range_change(&self, range: Range) -> Result<()> {
+        self.windsurf.handle_visible_range_change(range).await
     }
 }
 
-// Command handlers
 pub mod commands {
-    use super::*;
+    use super::{Arc, Result, IDE};
 
-    pub async fn show_metrics_details(context: Arc<IDEContext>) -> Result<()> {
-        // This would open a detailed metrics view in the IDE
-        // For now we'll just print the metrics
-        let metrics_text = context.windsurf.get_plugin().get_status_bar_text().await?;
-        println!("Detailed Metrics:\n{}", metrics_text);
+    /// Shows detailed metrics information.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the metrics cannot be displayed.
+    pub async fn show_metrics_details(ide: Arc<IDE>) -> Result<()> {
+        let metrics_text = format!("{ide:?}");
+        println!("Detailed Metrics:\n{metrics_text}");
         Ok(())
     }
 
-    pub async fn toggle_real_time_analysis(context: Arc<IDEContext>) -> Result<()> {
-        // Toggle the real-time analysis setting
-        let plugin = context.windsurf.get_plugin();
-        let mut config = plugin.get_config().await;
-        config.enable_real_time = !config.enable_real_time;
-        plugin.update_config(config).await?;
-        Ok(())
+    /// Toggles real-time analysis.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the real-time analysis state cannot be toggled.
+    pub async fn toggle_real_time_analysis(ide: Arc<IDE>) -> Result<()> {
+        let plugin = ide.windsurf.get_plugin();
+        let config = plugin.get_config().await;
+        let enable_real_time = !config.enable_real_time;
+        let new_config = config.with_real_time(enable_real_time);
+        plugin.update_config(new_config).await
     }
 }

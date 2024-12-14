@@ -7,16 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added comprehensive documentation to WindsurfIDE struct
+- Added detailed documentation for register_commands function
+
 ### Changed
 - Improved test organization and code quality
 - Enhanced error handling in Windsurf integration
 - Simplified test cases for better maintainability
+- Made handle_visible_range_change async for better performance
+- Improved IDE command registration process
 
 ### Fixed
 - Fixed Clippy warnings across test files
 - Improved type handling in test cases
 - Removed redundant imports and unused code
 - Updated test assertions for better reliability
+- Fixed moved value issue in toggle_real_time_analysis
+- Corrected async/await usage in IDE functions
 
 ## [1.0.3](https://github.com/QuantumMeta4/devflow-pro/compare/v1.0.2...v1.0.3) (2024-12-12)
 
