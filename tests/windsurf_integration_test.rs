@@ -1,47 +1,48 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use devflow_pro::windsurf::{
-    interface::{AnalysisContext, Interface, WindsurfIntegration},
-    Config, Plugin, Position, Range,
+    interface::{Integration, Interface},
+    Config, Plugin,
 };
-use std::path::PathBuf;
-use std::sync::Mutex;
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 struct TestIntegration {
+    config: Arc<Mutex<Config>>,
+    current_file: Arc<Mutex<Option<PathBuf>>>,
     plugin: Plugin,
-    config: Mutex<Config>,
-    current_file: Mutex<Option<PathBuf>>,
 }
 
 impl TestIntegration {
-    fn new() -> Self {
+    fn new(plugin: Plugin) -> Self {
         Self {
-            plugin: Plugin::default(),
-            config: Mutex::new(Config::default()),
-            current_file: Mutex::new(None),
+            config: Arc::new(Mutex::new(Config::default())),
+            current_file: Arc::new(Mutex::new(None)),
+            plugin,
         }
     }
 }
 
 #[async_trait]
 impl Interface for TestIntegration {
-    async fn handle_text_change(&self, content: &str) -> Result<()> {
-        println!("Handling text change: {content}");
+    async fn handle_text_change(&self, _content: &str) -> Result<()> {
         Ok(())
     }
 
-    async fn handle_cursor_move(&self, line: u32, character: u32) -> Result<()> {
-        println!("Handling cursor move: line {line}, character {character}");
+    async fn handle_cursor_move(&self, _line: u32, _character: u32) -> Result<()> {
         Ok(())
     }
 
-    async fn handle_visible_range_change(&self, range: Range) -> Result<()> {
-        println!("Handling visible range change: {range:?}");
+    async fn handle_visible_range_change(
+        &self,
+        _range: devflow_pro::windsurf::interface::Range,
+    ) -> Result<()> {
         Ok(())
     }
 
     async fn toggle_real_time_analysis(&self) -> Result<()> {
-        println!("Toggling real-time analysis");
         Ok(())
     }
 
@@ -69,40 +70,34 @@ impl Interface for TestIntegration {
 }
 
 #[async_trait]
-impl WindsurfIntegration for TestIntegration {
+impl Integration for TestIntegration {
     async fn initialize(&self) -> Result<()> {
-        println!("Initializing test integration");
         Ok(())
     }
 }
 
 #[tokio::test]
 async fn test_integration() -> Result<()> {
-    let integration = TestIntegration::new();
+    let plugin = Plugin::default();
+    let integration = Arc::new(TestIntegration::new(plugin));
     integration.initialize().await?;
 
-    let test_code = r"
-        fn calculate_sum(numbers: &[i32]) -> i32 {
-            numbers.iter().sum()
-        }
-    ";
+    // Test text change handling
+    integration.handle_text_change("test content").await?;
 
-    let context = AnalysisContext {
-        content: test_code.to_string(),
-        position: Some(Position {
-            line: 1,
-            character: 0,
-        }),
-        file_path: "test.rs".into(),
-        visible_range: None,
-    };
+    // Test cursor move handling
+    integration.handle_cursor_move(0, 0).await?;
 
-    integration.handle_text_change(&context.content).await?;
-    if let Some(pos) = context.position {
-        integration
-            .handle_cursor_move(pos.line, pos.character)
-            .await?;
-    }
+    // Test configuration
+    let config = Config::default();
+    integration.set_config(config).await?;
+    integration.get_config().await?;
+
+    // Test file handling
+    let path = PathBuf::from("test.rs");
+    integration.set_current_file(Some(path.clone())).await?;
+    let current_file = integration.get_current_file().await?;
+    assert_eq!(current_file.as_ref(), Some(&path));
 
     Ok(())
 }

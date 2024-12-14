@@ -3,8 +3,8 @@ use crate::ai_enhanced::{
     SecurityRecommendation,
 };
 use crate::windsurf::{
-    interface::{Interface, WindsurfIntegration},
-    Config, Plugin, Position, Range,
+    interface::{Integration, Interface, Position, Range},
+    Config, Plugin,
 };
 use crate::{DevFlowError, IssueSeverity, SecurityIssue};
 use anyhow::Result;
@@ -14,9 +14,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-/// Mock implementation of `WindsurfIntegration` for testing.
+/// Mock implementation of `Integration` for testing.
 #[derive(Default, Debug)]
-pub struct MockIntegration {
+pub struct IntegrationImpl {
     text_changes: Arc<Mutex<Vec<String>>>,
     cursor_moves: Arc<Mutex<Vec<Position>>>,
     visible_ranges: Arc<Mutex<Vec<Range>>>,
@@ -26,8 +26,8 @@ pub struct MockIntegration {
     current_file: Arc<Mutex<Option<PathBuf>>>,
 }
 
-impl MockIntegration {
-    /// Creates a new `MockIntegration` instance with the given plugin.
+impl IntegrationImpl {
+    /// Creates a new `IntegrationImpl` instance with the given plugin.
     #[must_use]
     pub fn new(plugin: Plugin) -> Self {
         Self {
@@ -73,7 +73,7 @@ impl MockIntegration {
 }
 
 #[async_trait]
-impl Interface for MockIntegration {
+impl Interface for IntegrationImpl {
     async fn handle_text_change(&self, content: &str) -> Result<()> {
         self.text_changes.lock().unwrap().push(content.to_string());
         Ok(())
@@ -123,7 +123,7 @@ impl Interface for MockIntegration {
 }
 
 #[async_trait]
-impl WindsurfIntegration for MockIntegration {
+impl Integration for IntegrationImpl {
     async fn initialize(&self) -> Result<()> {
         Ok(())
     }

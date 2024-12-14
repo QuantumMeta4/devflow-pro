@@ -1,13 +1,26 @@
-use crate::windsurf::{
-    interface::{Command, WindsurfIntegration},
-    Position, Range,
-};
+use crate::windsurf::interface::{Command, Integration, Position, Range};
 use anyhow::Result;
 use std::sync::Arc;
 
+/// Plugin for IDE integration.
+#[derive(Debug, Clone)]
+pub struct Plugin {
+    pub name: String,
+    pub version: String,
+}
+
+impl Default for Plugin {
+    fn default() -> Self {
+        Self {
+            name: "Windsurf".to_string(),
+            version: "0.1.0".to_string(),
+        }
+    }
+}
+
 /// The main IDE struct that handles integration with the editor.
 pub struct WindsurfIDE {
-    context: Arc<dyn WindsurfIntegration>,
+    context: Arc<dyn Integration>,
 }
 
 impl WindsurfIDE {
@@ -17,7 +30,7 @@ impl WindsurfIDE {
     ///
     /// Returns an error if IDE initialization fails.
     #[must_use = "This function returns a new WindsurfIDE instance that should be used"]
-    pub fn new(windsurf: impl Into<Arc<dyn WindsurfIntegration>>) -> Result<Self> {
+    pub fn new(windsurf: impl Into<Arc<dyn Integration>>) -> Result<Self> {
         let context = windsurf.into();
         let ide = Self { context };
         ide.register_commands();

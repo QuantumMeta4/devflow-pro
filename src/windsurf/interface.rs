@@ -1,9 +1,22 @@
 use super::{Config, Plugin};
-use crate::windsurf::{Position, Range};
 use anyhow::Result;
 use async_trait::async_trait;
 use std::{future::Future, path::PathBuf, pin::Pin};
 use tokio::sync::Mutex;
+
+/// Represents a position in a text document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Position {
+    pub line: u32,
+    pub character: u32,
+}
+
+/// Represents a range in a text document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Range {
+    pub start: Position,
+    pub end: Position,
+}
 
 /// Interface for IDE command handlers.
 pub type CommandHandler = Box<dyn Fn() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
@@ -74,7 +87,7 @@ pub trait Interface: Send + Sync {
 
 /// Windsurf integration trait.
 #[async_trait]
-pub trait WindsurfIntegration: Interface {
+pub trait Integration: Interface {
     /// Initializes the Windsurf integration.
     async fn initialize(&self) -> Result<()>;
 }
@@ -173,7 +186,7 @@ impl Interface for WindsurfIntegrationImpl {
 }
 
 #[async_trait]
-impl WindsurfIntegration for WindsurfIntegrationImpl {
+impl Integration for WindsurfIntegrationImpl {
     async fn initialize(&self) -> Result<()> {
         // Initialize any required resources
         Ok(())
