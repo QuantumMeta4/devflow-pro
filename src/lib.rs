@@ -32,6 +32,9 @@ pub enum DevFlowError {
     #[error("Invalid path: {0}")]
     InvalidPath(String),
 
+    #[error("Invalid position: Line number too large")]
+    InvalidPosition,
+
     #[error("Serialization error: {0}")]
     Serialization(String),
 

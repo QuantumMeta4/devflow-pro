@@ -1,4 +1,4 @@
-# DevFlow Pro: Multi-Language Static Code Analysis Toolkit 🔍🛡️
+# DevFlow Pro: Multi-Language Static AI Code Analysis Toolkit 🔍🛡️
 
 ![Build Status](https://github.com/QuantumMeta4/devflow-pro/actions/workflows/rust.yml/badge.svg)
 ![Version](https://img.shields.io/badge/version-1.0.3-blue)

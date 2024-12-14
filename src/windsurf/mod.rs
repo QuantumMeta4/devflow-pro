@@ -17,7 +17,8 @@ pub mod mock;
 pub mod ui;
 
 pub use ide_main::WindsurfIDE;
-pub use interface::WindsurfInterface;
+pub use interface::IDEInterface;
+pub use interface::WindsurfIntegration;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricsDisplay {

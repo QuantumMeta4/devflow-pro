@@ -41,10 +41,10 @@ pub enum OptimizationCategory {
 impl fmt::Display for OptimizationCategory {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            OptimizationCategory::Performance => write!(f, "Performance"),
-            OptimizationCategory::Memory => write!(f, "Memory"),
-            OptimizationCategory::Security => write!(f, "Security"),
-            OptimizationCategory::Maintainability => write!(f, "Maintainability"),
+            Self::Performance => write!(f, "Performance"),
+            Self::Memory => write!(f, "Memory"),
+            Self::Security => write!(f, "Security"),
+            Self::Maintainability => write!(f, "Maintainability"),
         }
     }
 }
@@ -118,7 +118,11 @@ impl CodeLLamaProvider {
         Ok(response_text)
     }
 
-    fn parse_ai_response(&self, response: &str) -> Result<AIAnalysisResult> {
+    /// Parse AI response into analysis result
+    ///
+    /// # Errors
+    /// Returns an error if parsing fails
+    fn parse_ai_response(response: &str) -> Result<AIAnalysisResult> {
         #[derive(Deserialize)]
         struct AIResponse {
             choices: Vec<Choice>,
@@ -135,7 +139,7 @@ impl CodeLLamaProvider {
         }
 
         let response: AIResponse = serde_json::from_str(response)
-            .map_err(|e| DevFlowError::AI(format!("Failed to parse AI response: {}", e)))?;
+            .map_err(|e| DevFlowError::AI(format!("Failed to parse AI response: {e}")))?;
 
         let content = response
             .choices
@@ -146,7 +150,7 @@ impl CodeLLamaProvider {
             .trim();
 
         let analysis: serde_json::Value = serde_json::from_str(content)
-            .map_err(|e| DevFlowError::AI(format!("Failed to parse analysis JSON: {}", e)))?;
+            .map_err(|e| DevFlowError::AI(format!("Failed to parse analysis JSON: {e}")))?;
 
         Ok(AIAnalysisResult {
             code_quality_score: analysis["quality_score"].as_f64().unwrap_or(0.0),
@@ -240,7 +244,7 @@ Here's the code to analyze:
 
         let response = self.send_ai_request(&prompt).await?;
         log::debug!("AI Response: {}", response);
-        self.parse_ai_response(&response)
+        Self::parse_ai_response(&response)
     }
 
     async fn suggest_fixes(&self, issues: &[crate::SecurityIssue]) -> Result<Vec<String>> {

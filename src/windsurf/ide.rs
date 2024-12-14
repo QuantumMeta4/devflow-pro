@@ -1,4 +1,4 @@
-use super::{Position, Range, WindsurfInterface};
+use super::{IDEInterface, Position, Range};
 use crate::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -15,11 +15,11 @@ pub struct StatusBarItem {
 #[derive(Debug, Clone)]
 pub struct IDEContext {
     pub status_bar: Arc<Mutex<Vec<StatusBarItem>>>,
-    pub windsurf: Arc<dyn WindsurfInterface>,
+    pub windsurf: Arc<dyn IDEInterface>,
 }
 
 impl IDEContext {
-    pub fn new(windsurf: Arc<dyn WindsurfInterface>) -> Self {
+    pub fn new(windsurf: Arc<dyn IDEInterface>) -> Self {
         Self {
             status_bar: Arc::new(Mutex::new(Vec::new())),
             windsurf,
