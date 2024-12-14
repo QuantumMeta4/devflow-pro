@@ -73,8 +73,11 @@ impl Stats {
 }
 
 impl Pipeline {
-    /// Creates a new pipeline
-    #[must_use]
+    /// Creates a new analysis pipeline with default configuration.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the `TOGETHER_API_KEY` environment variable is not set.
     pub fn new() -> Self {
         Self {
             cache: Arc::new(DashMap::new()),

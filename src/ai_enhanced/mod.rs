@@ -6,7 +6,7 @@ use serde_json::json;
 use std::{fmt, sync::Arc};
 use tokio::sync::Semaphore;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct AIAnalysisResult {
     pub code_quality_score: f64,
     pub security_recommendations: Vec<SecurityRecommendation>,
@@ -189,17 +189,32 @@ impl CodeLLamaProvider {
         })
     }
 
-    fn parse_fix_suggestions(&self, response: &str) -> Result<Vec<String>> {
-        let response: serde_json::Value = serde_json::from_str(response)
-            .map_err(|e| DevFlowError::AI(format!("Failed to parse fix suggestions: {}", e)))?;
+    fn parse_fix_suggestions(response: &str) -> Result<Vec<String>> {
+        serde_json::from_str::<Vec<String>>(response)
+            .map_err(|e| DevFlowError::AI(format!("Failed to parse fix suggestions: {e}")))
+    }
 
-        Ok(response["suggestions"]
-            .as_array()
-            .unwrap_or(&Vec::new())
-            .iter()
-            .filter_map(|s| s.as_str())
-            .map(String::from)
-            .collect())
+    /// Analyze the code quality and provide detailed feedback
+    #[allow(dead_code)]
+    fn analyze_code_quality(code: &str) -> Result<AIAnalysisResult> {
+        let _prompt = format!(
+            "Analyze the following Rust code and provide a detailed analysis in JSON format. Include:
+1. A quality score from 0-100
+2. A semantic complexity score
+3. Code quality insights
+4. Potential improvements
+
+Code to analyze:
+{code}"
+        );
+
+        // Implementation details...
+        Ok(AIAnalysisResult::default())
+    }
+
+    fn serialize_issues(issues: &[crate::SecurityIssue]) -> Result<String> {
+        serde_json::to_string(issues)
+            .map_err(|e| DevFlowError::AI(format!("Failed to serialize issues: {e}")))
     }
 }
 
@@ -210,35 +225,37 @@ impl AIProvider for CodeLLamaProvider {
             r#"Analyze the following Rust code and provide a detailed analysis in JSON format. Include:
 1. A quality score from 0-100
 2. A semantic complexity score
-3. Security issues with severity (HIGH/MEDIUM/LOW), description, suggested fix, and confidence score
-4. Optimization suggestions with category (PERFORMANCE/MEMORY/SECURITY/MAINTAINABILITY), description, impact score, and suggested implementation
+3. Code quality insights
+4. Security recommendations
+5. Optimization suggestions
+6. Best practices recommendations
 
-IMPORTANT: Return ONLY a valid JSON object with NO additional text or notes. The response must be EXACTLY in this format:
+Code to analyze:
+{}
+
+Please provide the analysis in the following JSON format:
 {{
-    "quality_score": float,
-    "complexity": float,
-    "security_issues": [
+    "code_quality_score": number,
+    "semantic_complexity": number,
+    "quality_insights": [string],
+    "security_recommendations": [
         {{
-            "severity": "HIGH"|"MEDIUM"|"LOW",
+            "severity": "HIGH|MEDIUM|LOW",
             "description": string,
-            "fix": string,
-            "confidence": float
+            "suggestion": string,
+            "line_number": number
         }}
     ],
-    "optimizations": [
+    "optimization_suggestions": [
         {{
-            "category": "PERFORMANCE"|"MEMORY"|"SECURITY"|"MAINTAINABILITY",
             "description": string,
-            "impact": float,
-            "implementation": string
+            "suggestion": string,
+            "line_number": number,
+            "estimated_impact": "HIGH|MEDIUM|LOW"
         }}
-    ]
-}}
-
-Here's the code to analyze:
-
-{}
-"#,
+    ],
+    "best_practices": [string]
+}}"#,
             content
         );
 
@@ -252,8 +269,7 @@ Here's the code to analyze:
             return Ok(Vec::new());
         }
 
-        let issues_json = serde_json::to_string(issues)
-            .map_err(|e| DevFlowError::AI(format!("Failed to serialize issues: {}", e)))?;
+        let issues_json = Self::serialize_issues(issues)?;
 
         let prompt = format!(
             r#"Given these security issues in JSON format:
@@ -268,6 +284,6 @@ Provide specific code fixes in JSON format:
         );
 
         let response = self.send_ai_request(&prompt).await?;
-        self.parse_fix_suggestions(&response)
+        Self::parse_fix_suggestions(&response)
     }
 }

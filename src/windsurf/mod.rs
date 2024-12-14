@@ -61,7 +61,7 @@ pub mod test_utils {
 
         Ok(super::WindsurfPlugin {
             config: Arc::new(Mutex::new(config)),
-            ai_provider: Arc::new(super::mock::MockAIProvider::new()),
+            ai_provider: Arc::new(super::mock::TestProvider::new()),
             semantic_analyzer: Arc::new(Mutex::new(SemanticAnalyzer::default())),
             current_file: Arc::new(Mutex::new(None)),
             semaphore: Arc::new(Semaphore::new(4)),
@@ -182,8 +182,8 @@ impl WindsurfPlugin {
                     config.max_concurrent_analyses,
                 ))
             } else {
-                log::warn!("TOGETHER_API_KEY not found, using MockAIProvider");
-                Arc::new(mock::MockAIProvider::new())
+                log::warn!("TOGETHER_API_KEY not found, using TestProvider");
+                Arc::new(mock::TestProvider::new())
             };
 
         Ok(Self {

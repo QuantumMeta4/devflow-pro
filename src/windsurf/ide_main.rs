@@ -15,7 +15,7 @@ pub struct WindsurfIDE {
 }
 
 impl WindsurfIDE {
-    /// Creates a new WindsurfIDE instance.
+    /// Creates a new `WindsurfIDE` instance.
     ///
     /// # Errors
     ///
@@ -28,7 +28,7 @@ impl WindsurfIDE {
         let context = Arc::new(IDE::new(windsurf));
 
         let ide = Self { context };
-        ide.register_commands().await?;
+        ide.register_commands()?;
         Ok(ide)
     }
 
@@ -37,7 +37,7 @@ impl WindsurfIDE {
     /// # Errors
     ///
     /// Returns an error if startup fails.
-    pub async fn start(&self) -> Result<()> {
+    pub fn start(&self) -> Result<()> {
         // In a real IDE, we'd initialize the UI and start listening for events
         println!("Starting Windsurf IDE...");
         Ok(())
@@ -51,7 +51,7 @@ impl WindsurfIDE {
     /// # Errors
     ///
     /// Returns an error if command registration fails.
-    async fn register_commands(&self) -> Result<()> {
+    fn register_commands(&self) -> Result<()> {
         // In a real IDE, we'd register these with the IDE's command system
         let context = self.context.clone();
 
