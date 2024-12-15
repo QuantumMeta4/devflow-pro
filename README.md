@@ -347,13 +347,12 @@ Cascade: *Explains error and suggests fixes*
 - **Security Scanning**: Vulnerability Detection across multiple categories
 
 ### 🤖 AI-Enhanced Capabilities (Together.xyz CodeLlama Integration)
-- Intelligent Code Reviews using CodeLlama-34b-Instruct model
+- Intelligent Code Reviews using Llama Vision 11B + FLUX.1 [schnell] model
 - Real-time Security Vulnerability Detection
 - Context-aware Performance Optimization Suggestions
 - Smart Architecture Recommendations
 - Best Practices Evaluation with confidence scoring
 - Semantic Code Understanding
-- Real-time Suggestions as You Type
 
 ### 🔑 Together.xyz API Setup (Required)
 
@@ -418,7 +417,7 @@ In Windsurf IDE, you can interact with Cascade AI using natural language:
 
 ### 🤖 Windsurf and Cascade AI Integration
 
-DevFlow Pro is powered by Together.xyz's CodeLlama model, and integrates direct with Windsurf IDE. This integration allows you to use DevFlow Pro through the Cascade AI assistant and as a extension. This integration provides a seamless experience with a custom DevFlow Pro environment for the Windsurf IDE and Cascade AI agent workflow. This provides intelligent code analysis, efficienct Cascade usage, and CodeLlama enhanced integretion with whichever agent is currently active.
+DevFlow Pro is powered by Together.xyz's Llama Vision 11B + FLUX.1 [schnell] model, and integrates direct with Windsurf IDE. This integration allows you to use DevFlow Pro through the Cascade AI assistant and soon as a extension. This integration provides a seamless experience with a custom DevFlow Pro environment for the Windsurf IDE and Cascade AI agent workflow. This provides intelligent code analysis, efficienct Cascade usage, and CodeLlama enhanced integretion with whichever agent is currently active.
 
 #### Features
 - **Semantic Code Understanding**: Analyzes code context and purpose
